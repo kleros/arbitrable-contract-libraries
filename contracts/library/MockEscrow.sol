@@ -515,8 +515,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @return The number of rounds.
      */
     function getNumberOfRounds(uint256 _transactionID) public view returns (uint256) {
-        BinaryAppealable.Round[] storage rounds = appealableStorage.roundsByItem[_transactionID];
-        return rounds.length;
+        return appealableStorage.getNumberOfRounds(_transactionID);
     }
 
     /** @dev Gets the contributions made by a party for a given round of the appeal.
@@ -530,9 +529,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         uint256 _round,
         address _contributor
     ) public view returns(uint256[3] memory contributions) {
-        BinaryAppealable.Round[] storage rounds = appealableStorage.roundsByItem[_transactionID];
-        BinaryAppealable.Round storage round = rounds[_round];
-        contributions = round.contributions[_contributor];
+        return appealableStorage.getContributions(_transactionID, _round, _contributor);
     }
 
     /** @dev Gets the information on a round of a transaction.
@@ -545,19 +542,12 @@ contract MockEscrow is IArbitrable, IEvidence {
         view
         returns (
             uint256[3] memory paidFees,
-            Party sideFunded,
+            BinaryAppealable.Party sideFunded,
             uint256 feeRewards,
             bool appealed
         )
     {
-        BinaryAppealable.Round[] storage rounds = appealableStorage.roundsByItem[_transactionID];
-        BinaryAppealable.Round storage round = rounds[_round];
-        return (
-            round.paidFees,
-            Party(uint256(round.sideFunded)),
-            round.feeRewards,
-            _round != rounds.length - 1
-        );
+        return appealableStorage.getRoundInfo(_transactionID, _round);
     }
 
     /**

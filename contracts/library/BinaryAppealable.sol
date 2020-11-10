@@ -210,4 +210,43 @@ library BinaryAppealable {
         remainder = _available - _requiredAmount;
         return (_requiredAmount, remainder);
     }
+
+    function getNumberOfRounds(AppealableStorage storage self, uint256 itemID) public view returns (uint256) {
+        return self.roundsByItem[itemID].length;
+    }
+
+    function getRoundInfo(
+        AppealableStorage storage self, 
+        uint256 itemID, 
+        uint256 _round
+        ) internal view returns(
+            uint256[3] memory paidFees,
+            Party sideFunded,
+            uint256 feeRewards,
+            bool appealed
+        ) {
+        
+        Round[] storage rounds = self.roundsByItem[itemID];
+        Round storage round = rounds[_round];
+
+        return (
+            round.paidFees,
+            round.sideFunded,
+            round.feeRewards,
+            _round != rounds.length - 1
+        );
+    }
+
+    function getContributions(
+        AppealableStorage storage self, 
+        uint256 itemID, 
+        uint256 _round,
+        address _contributor
+        ) internal view returns(uint256[3] memory contributions) {
+        
+        Round[] storage rounds = self.roundsByItem[itemID];
+        Round storage round = rounds[_round];
+        contributions = round.contributions[_contributor];
+    }
+
 }
