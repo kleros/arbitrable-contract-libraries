@@ -17,14 +17,11 @@ import "@kleros/ethereum-libraries/contracts/CappedMath.sol";
 contract MockEscrow is IArbitrable, IEvidence {
     
     using CappedMath for uint256;
-    using BinaryAppealable for BinaryAppealable.Round[];
+    using BinaryAppealable for BinaryAppealable.AppealableStorage;
 
     // **************************** //
     // *    Contract variables    * //
     // **************************** //
-
-    uint256 public constant AMOUNT_OF_CHOICES = 2;
-    uint256 public constant MULTIPLIER_DIVISOR = 10000; // Divisor parameter for multipliers.
 
     enum Party {None, Sender, Receiver}
     enum Status {NoDispute, WaitingSender, WaitingReceiver, DisputeCreated, Resolved}
@@ -55,15 +52,11 @@ contract MockEscrow is IArbitrable, IEvidence {
     bytes public arbitratorExtraData; // Extra data to set up the arbitration.
     uint256 public immutable feeTimeout; // Time in seconds a party can take to pay arbitration fees before being considered unresponsive and lose the dispute.
     
-    uint256 public immutable sharedStakeMultiplier; // Multiplier for calculating the appeal fee that must be paid by the submitter in the case where there is no winner or loser (e.g. when the arbitrator ruled "refuse to arbitrate").
-    uint256 public immutable winnerStakeMultiplier; // Multiplier for calculating the appeal fee of the party that won the previous round.
-    uint256 public immutable loserStakeMultiplier; // Multiplier for calculating the appeal fee of the party that lost the previous round.
-
     /// @dev Stores the hashes of all transactions.
     bytes32[] public transactionHashes;
 
     /// @dev Maps a transactionID to its respective appeal rounds.
-    mapping(uint256 => BinaryAppealable.Round[]) public roundsByTransactionID;
+    BinaryAppealable.AppealableStorage public appealableStorage;
 
     /// @dev Maps a disputeID to its respective transaction dispute.
     mapping (uint256 => TransactionDispute) public disputeIDtoTransactionDispute;
@@ -106,21 +99,6 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     event TransactionResolved(uint256 indexed _transactionID, Resolution indexed _resolution);
 
-    /** @dev To be emitted when the appeal fees of one of the parties are fully funded.
-     *  @param _transactionID The ID of the respective transaction.
-     *  @param _party The party that is fully funded.
-     */
-    event HasPaidAppealFee(uint256 indexed _transactionID, Party _party);
-
-    /**
-     * @dev To be emitted when someone contributes to the appeal process.
-     * @param _transactionID The ID of the respective transaction.
-     * @param _party The party which received the contribution.
-     * @param _contributor The address of the contributor.
-     * @param _amount The amount contributed.
-     */
-    event AppealContribution(uint256 indexed _transactionID, Party _party, address _contributor, uint256 _amount);
-
     // **************************** //
     // *    Arbitrable functions  * //
     // *    Modifying the state   * //
@@ -145,9 +123,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         arbitrator = _arbitrator;
         arbitratorExtraData = _arbitratorExtraData;
         feeTimeout = _feeTimeout;
-        sharedStakeMultiplier = _sharedStakeMultiplier;
-        winnerStakeMultiplier = _winnerStakeMultiplier;
-        loserStakeMultiplier = _loserStakeMultiplier;
+        appealableStorage.setMultipliers(_sharedStakeMultiplier, _winnerStakeMultiplier, _loserStakeMultiplier);
     }
 
     modifier onlyValidTransaction(uint256 _transactionID, Transaction memory _transaction) {
@@ -359,8 +335,8 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function raiseDispute(uint256 _transactionID, Transaction memory _transaction, uint256 _arbitrationCost) internal {
         _transaction.status = Status.DisputeCreated;
-        _transaction.disputeID = arbitrator.createDispute{value: _arbitrationCost}(AMOUNT_OF_CHOICES, arbitratorExtraData);
-        roundsByTransactionID[_transactionID].push();
+        _transaction.disputeID = arbitrator.createDispute{value: _arbitrationCost}(BinaryAppealable.AMOUNT_OF_CHOICES, arbitratorExtraData);
+        appealableStorage.roundsByItem[_transactionID].push();
         TransactionDispute storage transactionDispute = disputeIDtoTransactionDispute[_transaction.disputeID];
         transactionDispute.transactionID = uint240(_transactionID);
         emit Dispute(arbitrator, _transaction.disputeID, _transactionID, _transactionID);
@@ -405,20 +381,13 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function fundAppeal(uint256 _transactionID, Transaction calldata _transaction, Party _side) external payable onlyValidTransactionCD(_transactionID, _transaction) {
         require(_transaction.status == Status.DisputeCreated, "No dispute to appeal");
-        BinaryAppealable.Round[] storage rounds = roundsByTransactionID[_transactionID];
-        (uint256 contribution, bool sideFullyFunded, bool appealCreated) = rounds.fundAppeal(
+        appealableStorage.fundAppeal(
+            _transactionID,
             BinaryAppealable.Party(uint256(_side)), 
             _transaction.disputeID, 
             arbitrator, 
-            arbitratorExtraData, 
-            loserStakeMultiplier,
-            winnerStakeMultiplier,
-            sharedStakeMultiplier,
-            MULTIPLIER_DIVISOR
+            arbitratorExtraData
         );
-        emit AppealContribution(_transactionID, _side, msg.sender, contribution);
-        if (sideFullyFunded)
-            emit HasPaidAppealFee(_transactionID, _side);
     } 
     
     /** @dev Witdraws contributions of appeal rounds. Reimburses contributions if the appeal was not fully funded. 
@@ -433,8 +402,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         TransactionDispute storage transactionDispute = disputeIDtoTransactionDispute[_transaction.disputeID];
         require(transactionDispute.transactionID == _transactionID, "Undisputed transaction");
 
-        BinaryAppealable.Round[] storage rounds = roundsByTransactionID[_transactionID];
-        uint256 reward = rounds.withdrawFeesAndRewards(_beneficiary, _round, uint256(transactionDispute.ruling));
+        uint256 reward = appealableStorage.withdrawFeesAndRewards(_transactionID, _beneficiary, _round, uint256(transactionDispute.ruling));
         _beneficiary.send(reward); // It is the user responsibility to accept ETH.
     }
     
@@ -451,8 +419,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         TransactionDispute storage transactionDispute = disputeIDtoTransactionDispute[_transaction.disputeID];
         require(transactionDispute.transactionID == _transactionID, "Undisputed transaction");
 
-        BinaryAppealable.Round[] storage rounds = roundsByTransactionID[_transactionID];
-        uint256 reward = rounds.withdrawRoundBatch(_beneficiary, _cursor, _count, uint256(transactionDispute.ruling));
+        uint256 reward = appealableStorage.withdrawRoundBatch(_transactionID, _beneficiary, _cursor, _count, uint256(transactionDispute.ruling));
         _beneficiary.send(reward); // It is the user responsibility to accept ETH.
     }
 
@@ -463,13 +430,13 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function rule(uint256 _disputeID, uint256 _ruling) public override {
         require(msg.sender == address(arbitrator), "The caller must be the arbitrator.");
-        require(_ruling <= AMOUNT_OF_CHOICES, "Invalid ruling.");
+        require(_ruling <= BinaryAppealable.AMOUNT_OF_CHOICES, "Invalid ruling.");
 
         TransactionDispute storage transactionDispute = disputeIDtoTransactionDispute[_disputeID];
         require(transactionDispute.transactionID != 0, "Dispute does not exist.");
         require(transactionDispute.hasRuling == false, " Dispute already resolved.");
         
-        BinaryAppealable.Round[] storage rounds = roundsByTransactionID[uint256(transactionDispute.transactionID)];
+        BinaryAppealable.Round[] storage rounds = appealableStorage.roundsByItem[uint256(transactionDispute.transactionID)];
         BinaryAppealable.Round storage round = rounds[rounds.length - 1];
 
         // If only one side paid its fees we assume the ruling to be in its favor.
@@ -533,8 +500,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         TransactionDispute storage transactionDispute = disputeIDtoTransactionDispute[_transaction.disputeID];
         if (transactionDispute.transactionID != _transactionID) return total;
 
-        BinaryAppealable.Round[] storage rounds = roundsByTransactionID[_transactionID];
-        total = rounds.amountWithdrawable(_beneficiary, uint256(transactionDispute.ruling));
+        total = appealableStorage.amountWithdrawable(_transactionID, _beneficiary, uint256(transactionDispute.ruling));
     }
 
     /** @dev Getter to know the count of transactions.
@@ -549,7 +515,8 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @return The number of rounds.
      */
     function getNumberOfRounds(uint256 _transactionID) public view returns (uint256) {
-        return roundsByTransactionID[_transactionID].length;
+        BinaryAppealable.Round[] storage rounds = appealableStorage.roundsByItem[_transactionID];
+        return rounds.length;
     }
 
     /** @dev Gets the contributions made by a party for a given round of the appeal.
@@ -563,7 +530,8 @@ contract MockEscrow is IArbitrable, IEvidence {
         uint256 _round,
         address _contributor
     ) public view returns(uint256[3] memory contributions) {
-        BinaryAppealable.Round storage round = roundsByTransactionID[_transactionID][_round];
+        BinaryAppealable.Round[] storage rounds = appealableStorage.roundsByItem[_transactionID];
+        BinaryAppealable.Round storage round = rounds[_round];
         contributions = round.contributions[_contributor];
     }
 
@@ -582,12 +550,13 @@ contract MockEscrow is IArbitrable, IEvidence {
             bool appealed
         )
     {
-        BinaryAppealable.Round storage round = roundsByTransactionID[_transactionID][_round];
+        BinaryAppealable.Round[] storage rounds = appealableStorage.roundsByItem[_transactionID];
+        BinaryAppealable.Round storage round = rounds[_round];
         return (
             round.paidFees,
             Party(uint256(round.sideFunded)),
             round.feeRewards,
-            _round != roundsByTransactionID[_transactionID].length - 1
+            _round != rounds.length - 1
         );
     }
 
