@@ -260,7 +260,7 @@ library Appealable {
         paidFees[1] = round.paidFees[round.rulingsFunded[1]];
 
         return (
-            round.paidFees,
+            paidFees,
             round.rulingsFunded,
             round.feeRewards,
             _round != rounds.length - 1
