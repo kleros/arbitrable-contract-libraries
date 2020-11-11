@@ -172,22 +172,22 @@ library BinaryAppealable {
         AppealableStorage storage self, 
         uint256 itemID, 
         address _beneficiary, 
-        uint256 finalRuling
+        uint256 _finalRuling
         ) internal view returns(uint256 total) {
         
         Round[] storage rounds = self.roundsByItem[itemID];
         uint256 totalRounds = rounds.length;
         for (uint256 i = 0; i < totalRounds; i++) {
-            BinaryAppealable.Round storage round = rounds[i];
+            Round storage round = rounds[i];
             if (i == totalRounds - 1) {
                 total += round.contributions[_beneficiary][uint256(Party.Requester)] + round.contributions[_beneficiary][uint256(Party.Respondent)];
-            } else if (finalRuling == uint256(Party.None)) {
+            } else if (_finalRuling == uint256(Party.None)) {
                 uint256 totalFeesPaid = round.paidFees[uint256(Party.Requester)] + round.paidFees[uint256(Party.Respondent)];
                 uint256 totalBeneficiaryContributions = round.contributions[_beneficiary][uint256(Party.Requester)] + round.contributions[_beneficiary][uint256(Party.Respondent)];
                 total += totalFeesPaid > 0 ? (totalBeneficiaryContributions * round.feeRewards) / totalFeesPaid : 0;
             } else {
-                total += round.paidFees[finalRuling] > 0
-                    ? (round.contributions[_beneficiary][finalRuling] * round.feeRewards) / round.paidFees[finalRuling]
+                total += round.paidFees[_finalRuling] > 0
+                    ? (round.contributions[_beneficiary][_finalRuling] * round.feeRewards) / round.paidFees[_finalRuling]
                     : 0;
             }
         }
