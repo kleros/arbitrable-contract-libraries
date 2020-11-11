@@ -413,8 +413,7 @@ contract Linguo is IArbitrable, IEvidence {
         require(task.status == Status.Resolved, "The task should be resolved.");
 
         BinaryAppealable.Round[] storage rounds = task.rounds;
-        uint256 reward = rounds.withdrawFeesAndRewards(_beneficiary, _round, uint256(task.ruling));
-        _beneficiary.send(reward); // It is the user responsibility to accept ETH.
+        rounds.withdrawFeesAndRewards(_beneficiary, _round, uint256(task.ruling));
     }
 
     /** @dev Withdraws contributions of multiple appeal rounds at once. This function is O(n) where n is the number of rounds. This could exceed the gas limit, therefore this function should be used only as a utility and not be relied upon by other contracts.
@@ -433,8 +432,7 @@ contract Linguo is IArbitrable, IEvidence {
         require(task.status == Status.Resolved, "The task should be resolved.");
         
         BinaryAppealable.Round[] storage rounds = task.rounds;
-        uint256 reward = rounds.withdrawRoundBatch(_beneficiary, _cursor, _count, uint256(task.ruling));
-        _beneficiary.send(reward); // It is the user responsibility to accept ETH.
+        rounds.withdrawRoundBatch(_beneficiary, _cursor, _count, uint256(task.ruling));
     }
 
     /** @dev Gives the ruling for a dispute. Can only be called by the arbitrator.

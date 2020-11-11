@@ -402,8 +402,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         TransactionDispute storage transactionDispute = disputeIDtoTransactionDispute[_transaction.disputeID];
         require(transactionDispute.transactionID == _transactionID, "Undisputed transaction");
 
-        uint256 reward = appealableStorage.withdrawFeesAndRewards(_transactionID, _beneficiary, _round, uint256(transactionDispute.ruling));
-        _beneficiary.send(reward); // It is the user responsibility to accept ETH.
+        appealableStorage.withdrawFeesAndRewards(_transactionID, _beneficiary, _round, uint256(transactionDispute.ruling));
     }
     
     /** @dev Withdraws contributions of multiple appeal rounds at once. This function is O(n) where n is the number of rounds. 
@@ -419,8 +418,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         TransactionDispute storage transactionDispute = disputeIDtoTransactionDispute[_transaction.disputeID];
         require(transactionDispute.transactionID == _transactionID, "Undisputed transaction");
 
-        uint256 reward = appealableStorage.withdrawRoundBatch(_transactionID, _beneficiary, _cursor, _count, uint256(transactionDispute.ruling));
-        _beneficiary.send(reward); // It is the user responsibility to accept ETH.
+        appealableStorage.withdrawRoundBatch(_transactionID, _beneficiary, _cursor, _count, uint256(transactionDispute.ruling));
     }
 
     /** @dev Give a ruling for a dispute. Must be called by the arbitrator to enforce the final ruling.
