@@ -124,7 +124,7 @@ library Appealable {
         }
     }
 
-    function withdrawFeesAndRewards(
+    function _withdrawFeesAndRewards(
         AppealableStorage storage self, 
         uint256 itemID, 
         address _beneficiary, 
@@ -158,36 +158,53 @@ library Appealable {
             contributionTo[_finalRuling] = 0;
         }
     }
+
+    function withdrawFeesAndRewards(
+        AppealableStorage storage self, 
+        uint256 itemID, 
+        address payable _beneficiary, 
+        uint256 _ruling, 
+        uint256 _round, 
+        uint256 _finalRuling
+        ) internal {
+            uint256 reward = _withdrawFeesAndRewards(self, itemID, _beneficiary, _ruling, _round, _finalRuling);
+            _beneficiary.send(reward); // It is the user responsibility to accept ETH.
+    }
     
     function withdrawRoundBatch(
         AppealableStorage storage self, 
         uint256 itemID, 
-        address _beneficiary, 
+        address payable _beneficiary, 
         uint256 _ruling, 
         uint256 _cursor, 
         uint256 _count, 
         uint256 _finalRuling
-        ) internal returns(uint256 reward) {
+        ) internal {
 
         Round[] storage rounds = self.roundsByItem[itemID];
         uint256 maxRound = _count == 0 ? rounds.length : _cursor + _count;
+        uint256 reward;
         if (maxRound > rounds.length)
             maxRound = rounds.length;
         for (uint256 i = _cursor; i < maxRound; i++)
-            reward += withdrawFeesAndRewards(self, itemID, _beneficiary, _ruling, i, _finalRuling);
+            reward += _withdrawFeesAndRewards(self, itemID, _beneficiary, _ruling, i, _finalRuling);
+        
+        _beneficiary.send(reward); // It is the user responsibility to accept ETH.
     }
 
     function withdrawMultipleRulings(
         AppealableStorage storage self, 
         uint256 itemID, 
-        address _beneficiary, 
+        address payable _beneficiary, 
         uint256 _round, 
         uint256[] memory _rulings,
         uint256 _finalRuling
-        ) internal returns(uint256 reward) {
-        for (uint256 i = 0; i < _rulings.length; i++) {
-            reward += withdrawFeesAndRewards(self, itemID, _beneficiary, _rulings[i], _round, _finalRuling);
-        }
+        ) internal {
+        uint256 reward;
+        for (uint256 i = 0; i < _rulings.length; i++) 
+            reward += _withdrawFeesAndRewards(self, itemID, _beneficiary, _rulings[i], _round, _finalRuling);
+        
+        _beneficiary.send(reward); // It is the user responsibility to accept ETH.
     }
 
     function amountWithdrawable(
