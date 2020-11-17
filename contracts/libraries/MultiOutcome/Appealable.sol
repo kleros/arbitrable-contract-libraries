@@ -33,17 +33,19 @@ library Appealable {
     /** @dev To be emitted when the appeal fees of one of the parties are fully funded.
      *  @param _itemID The ID of the respective transaction.
      *  @param _ruling The ruling that is fully funded.
+     *  @param _round The appeal round fully funded by _party. Starts from 0.
      */
-    event HasPaidAppealFee(uint256 indexed _itemID, uint256 _ruling);
+    event HasPaidAppealFee(uint256 indexed _itemID, uint256 _ruling, uint256 _round);
 
     /**
-     * @dev To be emitted when someone contributes to the appeal process.
-     * @param _itemID The ID of the respective transaction.
-     * @param _ruling The ruling which received the contribution.
-     * @param _contributor The address of the contributor.
-     * @param _amount The amount contributed.
+     *  @dev To be emitted when someone contributes to the appeal process.
+     *  @param _itemID The ID of the respective transaction.
+     *  @param _ruling The ruling which received the contribution.
+     *  @param _contributor The address of the contributor.
+     *  @param _round The appeal round to which the contribution is going. Starts from 0.
+     *  @param _amount The amount contributed.
      */
-    event AppealContribution(uint256 indexed _itemID, uint256 _ruling, address _contributor, uint256 _amount);
+    event AppealContribution(uint256 indexed _itemID, uint256 _ruling, address indexed _contributor, uint256 _round, uint256 _amount);
 
     function setMultipliers(
         AppealableStorage storage self, 
@@ -104,14 +106,14 @@ library Appealable {
         (contribution, remainingETH) = calculateContribution(msg.value, totalCost.subCap(round.paidFees[ruling]));
         round.contributions[msg.sender][ruling] += contribution;
         round.paidFees[ruling] += contribution;
-        emit AppealContribution(itemID, ruling, msg.sender, contribution);
+        emit AppealContribution(itemID, ruling, msg.sender, rounds.length - 1, contribution);
 
         // Reimburse leftover ETH if any.
         if (remainingETH > 0)
             msg.sender.send(remainingETH); // Deliberate use of send in order to not block the contract in case of reverting fallback.
 
         if (round.paidFees[ruling] >= totalCost) {
-            emit HasPaidAppealFee(itemID, ruling);
+            emit HasPaidAppealFee(itemID, ruling, rounds.length - 1);
             if (round.rulingsFunded[0] == 0) {
                 round.rulingsFunded[0] = ruling;
             } else {
