@@ -26,17 +26,21 @@ library BinaryAppealable {
         mapping(address => uint256[3]) contributions; // Maps contributors to their contributions for each side.
     }
 
+    struct ItemData {
+        Round[] rounds;
+        Status status;
+        Party ruling;
+        uint256 disputeID;
+    }
+
     struct ArbitrableStorage {
         IArbitrator arbitrator; // Address of the arbitrator contract. TRUSTED.
         bytes arbitratorExtraData; // Extra data to set up the arbitration.        
         uint256 sharedStakeMultiplier; // Multiplier for calculating the appeal fee that must be paid by the submitter in the case where there is no winner or loser (e.g. when the arbitrator ruled "refuse to arbitrate").
         uint256 winnerStakeMultiplier; // Multiplier for calculating the appeal fee of the party that won the previous round.
         uint256 loserStakeMultiplier; // Multiplier for calculating the appeal fee of the party that lost the previous round.
-        mapping(uint256 => Round[]) itemRounds; // itemRounds[itemID]
-        mapping(uint256 => Status) itemStatus; // itemStatus[itemID]
-        mapping(uint256 => uint256) itemIDtoDisputeID; // itemIDtoDisputeID[itemID]
+        mapping(uint256 => ItemData) items; // items[itemID]
         mapping(uint256 => uint256) disputeIDtoItemID; // disputeIDtoItemID[disputeID]
-        mapping(uint256 => Party) disputeRuling; // disputeRuling[disputeID]
     }
 
     /// @dev See {@kleros/erc-792/contracts/IArbitrable.sol}
@@ -93,12 +97,13 @@ library BinaryAppealable {
         uint256 _evidenceGroupID
         ) internal returns(uint256 disputeID) {
 
-        require(self.itemStatus[itemID] != Status.Undisputed, "Item already disputed.");
-        self.itemStatus[itemID] = Status.Disputed;
+        ItemData storage item = self.items[itemID];
+        require(item.status != Status.Undisputed, "Item already disputed.");
+        item.status = Status.Disputed;
         disputeID = self.arbitrator.createDispute{value: _arbitrationCost}(AMOUNT_OF_CHOICES, self.arbitratorExtraData);
-        self.itemRounds[itemID].push();
+        item.rounds.push();
         self.disputeIDtoItemID[disputeID] = itemID;
-        self.itemIDtoDisputeID[itemID] = disputeID;
+        item.disputeID = disputeID;
         emit Dispute(self.arbitrator, disputeID, _metaEvidenceID, _evidenceGroupID);
     }
 
@@ -109,7 +114,7 @@ library BinaryAppealable {
         string memory _evidence
         ) internal {
         require(
-            self.itemStatus[itemID] < Status.Resolved,
+            self.items[itemID].status < Status.Resolved,
             "Must not send evidence if the dispute is resolved."
         );
 
@@ -117,16 +122,15 @@ library BinaryAppealable {
     }
 
     function fundAppeal(ArbitrableStorage storage self, uint256 itemID, Party side) internal {
-        require(self.itemStatus[itemID] == Status.Disputed, "No ongoing dispute to appeal.");
+        ItemData storage item = self.items[itemID];
+        require(item.status == Status.Disputed, "No ongoing dispute to appeal.");
         require(side != Party.None, "Invalid party.");
 
-        uint256 disputeID = self.itemIDtoDisputeID[itemID];
-
-        (uint256 appealPeriodStart, uint256 appealPeriodEnd) = self.arbitrator.appealPeriod(disputeID);
+        (uint256 appealPeriodStart, uint256 appealPeriodEnd) = self.arbitrator.appealPeriod(item.disputeID);
         require(block.timestamp >= appealPeriodStart && block.timestamp < appealPeriodEnd, "Not in appeal period.");
 
         uint256 multiplier;
-        uint256 winner = self.arbitrator.currentRuling(disputeID);
+        uint256 winner = self.arbitrator.currentRuling(item.disputeID);
         if (winner == uint256(side)){
             multiplier = self.winnerStakeMultiplier;
         } else if (winner == 0){
@@ -136,11 +140,10 @@ library BinaryAppealable {
             multiplier = self.loserStakeMultiplier;
         }
 
-        Round[] storage rounds = self.itemRounds[itemID];
-        Round storage round = rounds[rounds.length - 1];
+        Round storage round = item.rounds[item.rounds.length - 1];
         require(side != round.sideFunded, "Appeal fee has already been paid.");
 
-        uint256 appealCost = self.arbitrator.appealCost(disputeID, self.arbitratorExtraData);
+        uint256 appealCost = self.arbitrator.appealCost(item.disputeID, self.arbitratorExtraData);
         uint256 totalCost = appealCost.addCap((appealCost.mulCap(multiplier)) / MULTIPLIER_DIVISOR);
 
         // Take up to the amount necessary to fund the current round at the current costs.
@@ -149,22 +152,22 @@ library BinaryAppealable {
         (contribution, remainingETH) = calculateContribution(msg.value, totalCost.subCap(round.paidFees[uint256(side)]));
         round.contributions[msg.sender][uint256(side)] += contribution;
         round.paidFees[uint256(side)] += contribution;
-        emit AppealContribution(itemID, side, msg.sender, rounds.length - 1, contribution);
+        emit AppealContribution(itemID, side, msg.sender, item.rounds.length - 1, contribution);
 
         // Reimburse leftover ETH if any.
         if (remainingETH > 0)
             msg.sender.send(remainingETH); // Deliberate use of send in order to not block the contract in case of reverting fallback.
 
         if (round.paidFees[uint256(side)] >= totalCost) {
-            emit HasPaidAppealFee(itemID, side, rounds.length - 1);
+            emit HasPaidAppealFee(itemID, side, item.rounds.length - 1);
             if (round.sideFunded == Party.None) {
                 round.sideFunded = side;
             } else {
                 // Both sides are fully funded. Create an appeal.
-                self.arbitrator.appeal{value: appealCost}(disputeID, self.arbitratorExtraData);
+                self.arbitrator.appeal{value: appealCost}(item.disputeID, self.arbitratorExtraData);
                 round.feeRewards = (round.paidFees[uint256(Party.Requester)] + round.paidFees[uint256(Party.Respondent)]).subCap(appealCost);
                 round.sideFunded = Party.None;
-                rounds.push();
+                item.rounds.push();
             }
         }
     }
@@ -176,13 +179,13 @@ library BinaryAppealable {
         ) internal returns(Party finalRuling) {
         
         uint256 itemID = self.disputeIDtoItemID[_disputeID];
+        ItemData storage item = self.items[itemID];
 
-        require(self.itemStatus[itemID] == Status.Disputed, "Invalid dispute status.");
+        require(item.status == Status.Disputed, "Invalid dispute status.");
         require(msg.sender == address(self.arbitrator), "The caller must be the arbitrator.");
         require(_ruling <= AMOUNT_OF_CHOICES, "Invalid ruling.");
 
-        Round[] storage rounds = self.itemRounds[itemID];
-        Round storage round = rounds[rounds.length - 1];
+        Round storage round = item.rounds[item.rounds.length - 1];
 
         // If only one side paid its fees we assume the ruling to be in its favor.
         if (round.sideFunded == Party.None)
@@ -190,8 +193,8 @@ library BinaryAppealable {
         else
             finalRuling = round.sideFunded;
 
-        self.itemStatus[itemID] = Status.Resolved;
-        self.disputeRuling[_disputeID] = finalRuling;
+        item.status = Status.Resolved;
+        item.ruling = finalRuling;
 
         emit Ruling(self.arbitrator, _disputeID, uint256(finalRuling));
     }
@@ -200,27 +203,26 @@ library BinaryAppealable {
         ArbitrableStorage storage self, 
         uint256 itemID, 
         address _beneficiary, 
-        uint256 _round, 
-        Party _finalRuling
+        uint256 _round
         ) internal returns(uint256 reward) {
 
-        Round[] storage rounds = self.itemRounds[itemID];
-        Round storage round = rounds[_round];
+        ItemData storage item = self.items[itemID];
+        Round storage round = item.rounds[_round];
         uint256[3] storage contributionTo = round.contributions[_beneficiary];
-        uint256 lastRound = rounds.length - 1;
+        uint256 lastRound = item.rounds.length - 1;
 
         if (_round == lastRound) {
             // Allow to reimburse if funding was unsuccessful.
             reward = contributionTo[uint256(Party.Requester)] + contributionTo[uint256(Party.Respondent)];
-        } else if (_finalRuling == Party.None) {
+        } else if (item.ruling == Party.None) {
             // Reimburse unspent fees proportionally if there is no winner and loser.
             uint256 totalFeesPaid = round.paidFees[uint256(Party.Requester)] + round.paidFees[uint256(Party.Respondent)];
             uint256 totalBeneficiaryContributions = contributionTo[uint256(Party.Requester)] + contributionTo[uint256(Party.Respondent)];
             reward = totalFeesPaid > 0 ? (totalBeneficiaryContributions * round.feeRewards) / totalFeesPaid : 0;
         } else {
             // Reward the winner.
-            reward = round.paidFees[uint256(_finalRuling)] > 0
-                ? (contributionTo[uint256(_finalRuling)] * round.feeRewards) / round.paidFees[uint256(_finalRuling)]
+            reward = round.paidFees[uint256(item.ruling)] > 0
+                ? (contributionTo[uint256(item.ruling)] * round.feeRewards) / round.paidFees[uint256(item.ruling)]
                 : 0;
         }
         contributionTo[uint256(Party.Requester)] = 0;
@@ -234,11 +236,9 @@ library BinaryAppealable {
         uint256 _round
         ) internal {
 
-        require(self.itemStatus[itemID] == Status.Resolved, "Dispute not resolved.");
-        uint256 _disputeID = self.itemIDtoDisputeID[itemID];
-        Party _finalRuling = self.disputeRuling[_disputeID];
+        require(self.items[itemID].status == Status.Resolved, "Dispute not resolved.");
 
-        uint256 reward = _withdrawFeesAndRewards(self, itemID, _beneficiary, _round, _finalRuling);
+        uint256 reward = _withdrawFeesAndRewards(self, itemID, _beneficiary, _round);
         _beneficiary.send(reward); // It is the user responsibility to accept ETH.
     }
     
@@ -250,17 +250,15 @@ library BinaryAppealable {
         uint256 _count
         ) internal {
 
-        require(self.itemStatus[itemID] == Status.Resolved, "Dispute not resolved.");
-        uint256 _disputeID = self.itemIDtoDisputeID[itemID];
-        Party _finalRuling = self.disputeRuling[_disputeID];
+        ItemData storage item = self.items[itemID];
+        require(item.status == Status.Resolved, "Dispute not resolved.");
 
-        Round[] storage rounds = self.itemRounds[itemID];
-        uint256 maxRound = _count == 0 ? rounds.length : _cursor + _count;
+        uint256 maxRound = _count == 0 ? item.rounds.length : _cursor + _count;
         uint256 reward;
-        if (maxRound > rounds.length)
-            maxRound = rounds.length;
+        if (maxRound > item.rounds.length)
+            maxRound = item.rounds.length;
         for (uint256 i = _cursor; i < maxRound; i++)
-            reward += _withdrawFeesAndRewards(self, itemID, _beneficiary, i, _finalRuling);
+            reward += _withdrawFeesAndRewards(self, itemID, _beneficiary, i);
 
         _beneficiary.send(reward); // It is the user responsibility to accept ETH.
     }
@@ -271,24 +269,21 @@ library BinaryAppealable {
         address _beneficiary
         ) internal view returns(uint256 total) {
 
-        if (self.itemStatus[itemID] != Status.Resolved) return total;
-        
-        uint256 _disputeID = self.itemIDtoDisputeID[itemID];
-        Party _finalRuling = self.disputeRuling[_disputeID];
+        ItemData storage item = self.items[itemID];
+        if (item.status != Status.Resolved) return total;        
 
-        Round[] storage rounds = self.itemRounds[itemID];
-        uint256 totalRounds = rounds.length;
+        uint256 totalRounds = item.rounds.length;
         for (uint256 i = 0; i < totalRounds; i++) {
-            Round storage round = rounds[i];
+            Round storage round = item.rounds[i];
             if (i == totalRounds - 1) {
                 total += round.contributions[_beneficiary][uint256(Party.Requester)] + round.contributions[_beneficiary][uint256(Party.Respondent)];
-            } else if (_finalRuling == Party.None) {
+            } else if (item.ruling == Party.None) {
                 uint256 totalFeesPaid = round.paidFees[uint256(Party.Requester)] + round.paidFees[uint256(Party.Respondent)];
                 uint256 totalBeneficiaryContributions = round.contributions[_beneficiary][uint256(Party.Requester)] + round.contributions[_beneficiary][uint256(Party.Respondent)];
                 total += totalFeesPaid > 0 ? (totalBeneficiaryContributions * round.feeRewards) / totalFeesPaid : 0;
             } else {
-                total += round.paidFees[uint256(_finalRuling)] > 0
-                    ? (round.contributions[_beneficiary][uint256(_finalRuling)] * round.feeRewards) / round.paidFees[uint256(_finalRuling)]
+                total += round.paidFees[uint256(item.ruling)] > 0
+                    ? (round.contributions[_beneficiary][uint256(item.ruling)] * round.feeRewards) / round.paidFees[uint256(item.ruling)]
                     : 0;
             }
         }
@@ -312,13 +307,10 @@ library BinaryAppealable {
         return (_requiredAmount, remainder);
     }
 
-    function getFinalRuling(ArbitrableStorage storage self, uint256 itemID) internal view returns(Party _finalRuling) {
-        require(
-            self.itemStatus[itemID] == BinaryAppealable.Status.Resolved, 
-            "Arbitrator has not ruled yet."
-        );
-        uint256 _disputeID = self.itemIDtoDisputeID[itemID];
-        _finalRuling = self.disputeRuling[_disputeID];
+    function getFinalRuling(ArbitrableStorage storage self, uint256 itemID) internal view returns(Party) {
+        ItemData storage item = self.items[itemID];
+        require(item.status == Status.Resolved, "Arbitrator has not ruled yet.");
+        return item.ruling;
     }
 
     function getArbitrationCost(ArbitrableStorage storage self) internal view returns(uint256) {
@@ -326,7 +318,7 @@ library BinaryAppealable {
     }
 
     function getNumberOfRounds(ArbitrableStorage storage self, uint256 itemID) internal view returns (uint256) {
-        return self.itemRounds[itemID].length;
+        return self.items[itemID].rounds.length;
     }
 
     function getRoundInfo(
@@ -340,14 +332,14 @@ library BinaryAppealable {
             bool appealed
         ) {
         
-        Round[] storage rounds = self.itemRounds[itemID];
-        Round storage round = rounds[_round];
+        ItemData storage item = self.items[itemID];
+        Round storage round = item.rounds[_round];
 
         return (
             round.paidFees,
             round.sideFunded,
             round.feeRewards,
-            _round != rounds.length - 1
+            _round != item.rounds.length - 1
         );
     }
 
@@ -358,8 +350,8 @@ library BinaryAppealable {
         address _contributor
         ) internal view returns(uint256[3] memory contributions) {
         
-        Round[] storage rounds = self.itemRounds[itemID];
-        Round storage round = rounds[_round];
+        ItemData storage item = self.items[itemID];
+        Round storage round = item.rounds[_round];
         contributions = round.contributions[_contributor];
     }
 

@@ -162,7 +162,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function pay(uint256 _transactionID, Transaction memory _transaction, uint256 _amount) public onlyValidTransaction(_transactionID, _transaction) {
         require(_transaction.sender == msg.sender, "The caller must be the sender.");
-        BinaryAppealable.Status status = arbitrableStorage.itemStatus[_transactionID];
+        BinaryAppealable.Status status = arbitrableStorage.items[_transactionID].status;
         require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
         //require(_transaction.status == Status.NoDispute, "The transaction must not be disputed.");
         require(_amount <= _transaction.amount, "Maximum amount available for payment exceeded.");
@@ -182,7 +182,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function reimburse(uint256 _transactionID, Transaction memory _transaction, uint256 _amountReimbursed) public onlyValidTransaction(_transactionID, _transaction) {
         require(_transaction.receiver == msg.sender, "The caller must be the receiver.");
-        BinaryAppealable.Status status = arbitrableStorage.itemStatus[_transactionID];
+        BinaryAppealable.Status status = arbitrableStorage.items[_transactionID].status;
         require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
         //require(_transaction.status == Status.NoDispute, "The transaction must not be disputed.");
         require(_amountReimbursed <= _transaction.amount, "Maximum reimbursement available exceeded.");
@@ -201,7 +201,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function executeTransaction(uint256 _transactionID, Transaction memory _transaction) public onlyValidTransaction(_transactionID, _transaction) {
         require(block.timestamp >= _transaction.deadline, "Deadline not passed.");
-        BinaryAppealable.Status status = arbitrableStorage.itemStatus[_transactionID];
+        BinaryAppealable.Status status = arbitrableStorage.items[_transactionID].status;
         require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
         //require(_transaction.status == Status.NoDispute, "The transaction must not be disputed.");
 
@@ -222,7 +222,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _transaction The transaction state.
      */
     function payArbitrationFeeBySender(uint256 _transactionID, Transaction memory _transaction) public payable onlyValidTransaction(_transactionID, _transaction) {
-        BinaryAppealable.Status status = arbitrableStorage.itemStatus[_transactionID];
+        BinaryAppealable.Status status = arbitrableStorage.items[_transactionID].status;
         require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
         require(msg.sender == _transaction.sender, "The caller must be the sender.");
 
@@ -251,7 +251,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _transaction The transaction state.
      */
     function payArbitrationFeeByReceiver(uint256 _transactionID, Transaction memory _transaction) public payable onlyValidTransaction(_transactionID, _transaction) {
-        BinaryAppealable.Status status = arbitrableStorage.itemStatus[_transactionID];
+        BinaryAppealable.Status status = arbitrableStorage.items[_transactionID].status;
         require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
         require(msg.sender == _transaction.receiver, "The caller must be the receiver.");
         
