@@ -17,7 +17,7 @@ import "@kleros/ethereum-libraries/contracts/CappedMath.sol";
 contract MockEscrow is IArbitrable, IEvidence {
     
     using CappedMath for uint256;
-    using BinaryAppealable for BinaryAppealable.AppealableStorage;
+    using BinaryAppealable for BinaryAppealable.ArbitrableStorage;
 
     // **************************** //
     // *    Contract variables    * //
@@ -39,27 +39,13 @@ contract MockEscrow is IArbitrable, IEvidence {
         Status status;
     }
 
-    /**
-     * @dev Tracks the state of eventual disputes.
-     */
-    struct TransactionDispute {
-        uint240 transactionID; // The transaction ID.
-        bool hasRuling; // Required to differentiate between having no ruling and a RefusedToRule ruling.
-        uint8 ruling; // The ruling given by the arbitrator.
-    }
-
-    IArbitrator public immutable arbitrator; // Address of the arbitrator contract. TRUSTED.
-    bytes public arbitratorExtraData; // Extra data to set up the arbitration.
     uint256 public immutable feeTimeout; // Time in seconds a party can take to pay arbitration fees before being considered unresponsive and lose the dispute.
     
     /// @dev Stores the hashes of all transactions.
     bytes32[] public transactionHashes;
 
     /// @dev Maps a transactionID to its respective appeal rounds.
-    BinaryAppealable.AppealableStorage public appealableStorage;
-
-    /// @dev Maps a disputeID to its respective transaction dispute.
-    mapping (uint256 => TransactionDispute) public disputeIDtoTransactionDispute;
+    BinaryAppealable.ArbitrableStorage public arbitrableStorage;
 
     // **************************** //
     // *          Events          * //
@@ -120,10 +106,9 @@ contract MockEscrow is IArbitrable, IEvidence {
         uint256 _winnerStakeMultiplier,
         uint256 _loserStakeMultiplier
     ) {
-        arbitrator = _arbitrator;
-        arbitratorExtraData = _arbitratorExtraData;
         feeTimeout = _feeTimeout;
-        appealableStorage.setMultipliers(_sharedStakeMultiplier, _winnerStakeMultiplier, _loserStakeMultiplier);
+        arbitrableStorage.setMultipliers(_sharedStakeMultiplier, _winnerStakeMultiplier, _loserStakeMultiplier);
+        arbitrableStorage.setArbitrator(_arbitrator, _arbitratorExtraData);
     }
 
     modifier onlyValidTransaction(uint256 _transactionID, Transaction memory _transaction) {
@@ -177,7 +162,9 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function pay(uint256 _transactionID, Transaction memory _transaction, uint256 _amount) public onlyValidTransaction(_transactionID, _transaction) {
         require(_transaction.sender == msg.sender, "The caller must be the sender.");
-        require(_transaction.status == Status.NoDispute, "The transaction must not be disputed.");
+        BinaryAppealable.Status status = arbitrableStorage.itemStatus[_transactionID];
+        require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
+        //require(_transaction.status == Status.NoDispute, "The transaction must not be disputed.");
         require(_amount <= _transaction.amount, "Maximum amount available for payment exceeded.");
 
         _transaction.receiver.send(_amount);
@@ -195,7 +182,9 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function reimburse(uint256 _transactionID, Transaction memory _transaction, uint256 _amountReimbursed) public onlyValidTransaction(_transactionID, _transaction) {
         require(_transaction.receiver == msg.sender, "The caller must be the receiver.");
-        require(_transaction.status == Status.NoDispute, "The transaction must not be disputed.");
+        BinaryAppealable.Status status = arbitrableStorage.itemStatus[_transactionID];
+        require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
+        //require(_transaction.status == Status.NoDispute, "The transaction must not be disputed.");
         require(_amountReimbursed <= _transaction.amount, "Maximum reimbursement available exceeded.");
 
         _transaction.sender.send(_amountReimbursed);
@@ -212,7 +201,9 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function executeTransaction(uint256 _transactionID, Transaction memory _transaction) public onlyValidTransaction(_transactionID, _transaction) {
         require(block.timestamp >= _transaction.deadline, "Deadline not passed.");
-        require(_transaction.status == Status.NoDispute, "The transaction must not be disputed.");
+        BinaryAppealable.Status status = arbitrableStorage.itemStatus[_transactionID];
+        require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
+        //require(_transaction.status == Status.NoDispute, "The transaction must not be disputed.");
 
         _transaction.receiver.send(_transaction.amount);
         _transaction.amount = 0;
@@ -231,10 +222,11 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _transaction The transaction state.
      */
     function payArbitrationFeeBySender(uint256 _transactionID, Transaction memory _transaction) public payable onlyValidTransaction(_transactionID, _transaction) {
-        require(_transaction.status < Status.DisputeCreated, "Dispute has already been created or because the transaction has been executed.");
+        BinaryAppealable.Status status = arbitrableStorage.itemStatus[_transactionID];
+        require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
         require(msg.sender == _transaction.sender, "The caller must be the sender.");
 
-        uint256 arbitrationCost = arbitrator.arbitrationCost(arbitratorExtraData);
+        uint256 arbitrationCost = arbitrableStorage.getArbitrationCost();
         _transaction.senderFee += msg.value;
         // Require that the total pay at least the arbitration cost.
         require(_transaction.senderFee >= arbitrationCost, "The sender fee must cover arbitration costs.");
@@ -259,10 +251,11 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _transaction The transaction state.
      */
     function payArbitrationFeeByReceiver(uint256 _transactionID, Transaction memory _transaction) public payable onlyValidTransaction(_transactionID, _transaction) {
-        require(_transaction.status < Status.DisputeCreated, "Dispute has already been created or because the transaction has been executed.");
+        BinaryAppealable.Status status = arbitrableStorage.itemStatus[_transactionID];
+        require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
         require(msg.sender == _transaction.receiver, "The caller must be the receiver.");
         
-        uint256 arbitrationCost = arbitrator.arbitrationCost(arbitratorExtraData);
+        uint256 arbitrationCost = arbitrableStorage.getArbitrationCost();
         _transaction.receiverFee += msg.value;
         // Require that the total paid to be at least the arbitration cost.
         require(_transaction.receiverFee >= arbitrationCost, "The receiver fee must cover arbitration costs.");
@@ -334,12 +327,12 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _arbitrationCost Amount to pay the arbitrator.
      */
     function raiseDispute(uint256 _transactionID, Transaction memory _transaction, uint256 _arbitrationCost) internal {
-        _transaction.status = Status.DisputeCreated;
-        _transaction.disputeID = arbitrator.createDispute{value: _arbitrationCost}(BinaryAppealable.AMOUNT_OF_CHOICES, arbitratorExtraData);
-        appealableStorage.roundsByItem[_transactionID].push();
-        TransactionDispute storage transactionDispute = disputeIDtoTransactionDispute[_transaction.disputeID];
-        transactionDispute.transactionID = uint240(_transactionID);
-        emit Dispute(arbitrator, _transaction.disputeID, _transactionID, _transactionID);
+        _transaction.disputeID = arbitrableStorage.createDispute(
+            _transactionID,
+            _arbitrationCost,
+            _transactionID,
+            _transactionID
+        );
 
         // Refund sender if it overpaid.
         if (_transaction.senderFee > _arbitrationCost) {
@@ -366,12 +359,7 @@ contract MockEscrow is IArbitrable, IEvidence {
             msg.sender == _transaction.sender || msg.sender == _transaction.receiver,
             "The caller must be the sender or the receiver."
         );
-        require(
-            _transaction.status < Status.Resolved,
-            "Must not send evidence if the dispute is resolved."
-        );
-
-        emit Evidence(arbitrator, _transactionID, msg.sender, _evidence);
+        arbitrableStorage.submitEvidence(_transactionID, _transactionID, _evidence);
     }
 
     /** @dev Takes up to the total amount required to fund a side of an appeal. Reimburses the rest. Creates an appeal if both sides are fully funded.
@@ -380,13 +368,9 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _side The party that pays the appeal fee.
      */
     function fundAppeal(uint256 _transactionID, Transaction calldata _transaction, Party _side) external payable onlyValidTransactionCD(_transactionID, _transaction) {
-        require(_transaction.status == Status.DisputeCreated, "No dispute to appeal");
-        appealableStorage.fundAppeal(
+        arbitrableStorage.fundAppeal(
             _transactionID,
-            BinaryAppealable.Party(uint256(_side)), 
-            _transaction.disputeID, 
-            arbitrator, 
-            arbitratorExtraData
+            BinaryAppealable.Party(uint256(_side))
         );
     } 
     
@@ -398,11 +382,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _round The round from which to withdraw.
      */
     function withdrawFeesAndRewards(address payable _beneficiary, uint256 _transactionID, Transaction calldata _transaction, uint256 _round) public onlyValidTransactionCD(_transactionID, _transaction) {
-        require(_transaction.status == Status.Resolved, "The transaction must be resolved.");
-        TransactionDispute storage transactionDispute = disputeIDtoTransactionDispute[_transaction.disputeID];
-        require(transactionDispute.transactionID == _transactionID, "Undisputed transaction");
-
-        appealableStorage.withdrawFeesAndRewards(_transactionID, _beneficiary, _round, uint256(transactionDispute.ruling));
+        arbitrableStorage.withdrawFeesAndRewards(_transactionID, _beneficiary, _round);
     }
     
     /** @dev Withdraws contributions of multiple appeal rounds at once. This function is O(n) where n is the number of rounds. 
@@ -414,11 +394,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _count The number of rounds to iterate. If set to 0 or a value larger than the number of rounds, iterates until the last round.
      */
     function batchRoundWithdraw(address payable _beneficiary, uint256 _transactionID, Transaction calldata _transaction, uint256 _cursor, uint256 _count) public onlyValidTransactionCD(_transactionID, _transaction) {
-        require(_transaction.status == Status.Resolved, "The transaction must be resolved.");
-        TransactionDispute storage transactionDispute = disputeIDtoTransactionDispute[_transaction.disputeID];
-        require(transactionDispute.transactionID == _transactionID, "Undisputed transaction");
-
-        appealableStorage.withdrawRoundBatch(_transactionID, _beneficiary, _cursor, _count, uint256(transactionDispute.ruling));
+        arbitrableStorage.withdrawRoundBatch(_transactionID, _beneficiary, _cursor, _count);
     }
 
     /** @dev Give a ruling for a dispute. Must be called by the arbitrator to enforce the final ruling.
@@ -427,26 +403,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _ruling Ruling given by the arbitrator. Note that 0 is reserved for "Not able/wanting to make a decision".
      */
     function rule(uint256 _disputeID, uint256 _ruling) public override {
-        require(msg.sender == address(arbitrator), "The caller must be the arbitrator.");
-        require(_ruling <= BinaryAppealable.AMOUNT_OF_CHOICES, "Invalid ruling.");
-
-        TransactionDispute storage transactionDispute = disputeIDtoTransactionDispute[_disputeID];
-        require(transactionDispute.transactionID != 0, "Dispute does not exist.");
-        require(transactionDispute.hasRuling == false, " Dispute already resolved.");
-        
-        BinaryAppealable.Round[] storage rounds = appealableStorage.roundsByItem[uint256(transactionDispute.transactionID)];
-        BinaryAppealable.Round storage round = rounds[rounds.length - 1];
-
-        // If only one side paid its fees we assume the ruling to be in its favor.
-        if (round.sideFunded == BinaryAppealable.Party(uint256(Party.Sender)))
-            transactionDispute.ruling = uint8(Party.Sender);
-        else if (round.sideFunded == BinaryAppealable.Party(uint256(Party.Receiver)))
-            transactionDispute.ruling = uint8(Party.Receiver);
-        else
-            transactionDispute.ruling = uint8(_ruling);
-
-        transactionDispute.hasRuling = true;
-        emit Ruling(arbitrator, _disputeID, uint256(transactionDispute.ruling));
+        arbitrableStorage.processRuling(_disputeID, _ruling);
     }
     
     /** @dev Execute a ruling of a dispute. It reimburses the fee to the winning party.
@@ -454,16 +411,14 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _transaction The transaction state.
      */
     function executeRuling(uint256 _transactionID, Transaction memory _transaction) public onlyValidTransaction(_transactionID, _transaction) {
-        require(_transaction.status == Status.DisputeCreated, "Invalid transaction status.");
 
-        TransactionDispute storage transactionDispute = disputeIDtoTransactionDispute[_transaction.disputeID];
-        require(transactionDispute.hasRuling, "Arbitrator has not ruled yet.");
+        Party ruling = Party(uint256(arbitrableStorage.getFinalRuling(_transactionID)));
 
         // Give the arbitration fee back.
         // Note that we use send to prevent a party from blocking the execution.
-        if (transactionDispute.ruling == uint8(Party.Sender)) {
+        if (ruling == Party.Sender) {
             _transaction.sender.send(_transaction.senderFee + _transaction.amount);
-        } else if (transactionDispute.ruling == uint8(Party.Receiver)) {
+        } else if (ruling == Party.Receiver) {
             _transaction.receiver.send(_transaction.receiverFee + _transaction.amount);
         } else {
             uint256 split_amount = (_transaction.senderFee + _transaction.amount) / 2;
@@ -493,12 +448,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @return total The total amount of wei available to withdraw.
      */
     function amountWithdrawable(uint256 _transactionID, Transaction calldata _transaction, address _beneficiary) public view onlyValidTransactionCD(_transactionID, _transaction) returns (uint256 total) {
-        if (_transaction.status != Status.Resolved) return total;
-
-        TransactionDispute storage transactionDispute = disputeIDtoTransactionDispute[_transaction.disputeID];
-        if (transactionDispute.transactionID != _transactionID) return total;
-
-        total = appealableStorage.amountWithdrawable(_transactionID, _beneficiary, uint256(transactionDispute.ruling));
+        total = arbitrableStorage.amountWithdrawable(_transactionID, _beneficiary);
     }
 
     /** @dev Getter to know the count of transactions.
@@ -513,7 +463,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @return The number of rounds.
      */
     function getNumberOfRounds(uint256 _transactionID) public view returns (uint256) {
-        return appealableStorage.getNumberOfRounds(_transactionID);
+        return arbitrableStorage.getNumberOfRounds(_transactionID);
     }
 
     /** @dev Gets the contributions made by a party for a given round of the appeal.
@@ -527,7 +477,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         uint256 _round,
         address _contributor
     ) public view returns(uint256[3] memory contributions) {
-        return appealableStorage.getContributions(_transactionID, _round, _contributor);
+        return arbitrableStorage.getContributions(_transactionID, _round, _contributor);
     }
 
     /** @dev Gets the information on a round of a transaction.
@@ -545,7 +495,7 @@ contract MockEscrow is IArbitrable, IEvidence {
             bool appealed
         )
     {
-        return appealableStorage.getRoundInfo(_transactionID, _round);
+        return arbitrableStorage.getRoundInfo(_transactionID, _round);
     }
 
     /**
