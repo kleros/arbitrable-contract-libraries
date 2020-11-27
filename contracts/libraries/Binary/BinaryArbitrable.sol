@@ -10,7 +10,7 @@ pragma solidity >=0.7;
 import "@kleros/erc-792/contracts/IArbitrator.sol";
 import "@kleros/ethereum-libraries/contracts/CappedMath.sol";
 
-library BinaryAppealable {
+library BinaryArbitrable {
     using CappedMath for uint256;
 
     uint256 public constant AMOUNT_OF_CHOICES = 2;

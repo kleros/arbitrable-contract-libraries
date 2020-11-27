@@ -8,7 +8,7 @@
 pragma solidity >=0.7;
 pragma experimental ABIEncoderV2;
 
-import "./BinaryAppealable.sol";
+import "./BinaryArbitrable.sol";
 import "@kleros/erc-792/contracts/IArbitrable.sol";
 import "@kleros/erc-792/contracts/IArbitrator.sol";
 import "@kleros/erc-792/contracts/erc-1497/IEvidence.sol";
@@ -17,14 +17,14 @@ import "@kleros/ethereum-libraries/contracts/CappedMath.sol";
 contract MockEscrow is IArbitrable, IEvidence {
     
     using CappedMath for uint256;
-    using BinaryAppealable for BinaryAppealable.ArbitrableStorage;
+    using BinaryArbitrable for BinaryArbitrable.ArbitrableStorage;
 
     // **************************** //
     // *    Contract variables    * //
     // **************************** //
 
     enum Party {None, Sender, Receiver}
-    enum Status {NoDispute, WaitingSender, WaitingReceiver, DisputeCreated, Resolved}
+    enum Status {Ongoing, WaitingSenderFee, WaitingReceiverFee, Resolved}
     enum Resolution {TransactionExecuted, TimeoutBySender, TimeoutByReceiver, RulingEnforced}
 
     struct Transaction {
@@ -32,7 +32,6 @@ contract MockEscrow is IArbitrable, IEvidence {
         address payable receiver;
         uint256 amount;
         uint256 deadline; // Timestamp at which the transaction can be automatically executed if not disputed.
-        uint256 disputeID; // If dispute exists, the ID of the dispute.
         uint256 senderFee; // Total fees paid by the sender.
         uint256 receiverFee; // Total fees paid by the receiver.
         uint256 lastInteraction; // Last interaction for the dispute procedure.
@@ -45,7 +44,7 @@ contract MockEscrow is IArbitrable, IEvidence {
     bytes32[] public transactionHashes;
 
     /// @dev Maps a transactionID to its respective appeal rounds.
-    BinaryAppealable.ArbitrableStorage public arbitrableStorage;
+    BinaryArbitrable.ArbitrableStorage public arbitrableStorage;
 
     // **************************** //
     // *          Events          * //
@@ -146,6 +145,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         transaction.amount = msg.value;
         transaction.deadline = block.timestamp + _timeoutPayment;
         transaction.lastInteraction = block.timestamp;
+        transaction.status = Status.Ongoing; // Redundant code. This line is only for clarity.
 
         transactionHashes.push(hashTransactionState(transaction));
         transactionID = transactionHashes.length; // transactionID starts at 1. This way, TransactionDispute can check if a dispute exists by testing transactionID != 0.
@@ -162,9 +162,9 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function pay(uint256 _transactionID, Transaction memory _transaction, uint256 _amount) public onlyValidTransaction(_transactionID, _transaction) {
         require(_transaction.sender == msg.sender, "The caller must be the sender.");
-        BinaryAppealable.Status status = arbitrableStorage.items[_transactionID].status;
-        require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
-        //require(_transaction.status == Status.NoDispute, "The transaction must not be disputed.");
+        BinaryArbitrable.Status status = arbitrableStorage.items[_transactionID].status;
+        require(status == BinaryArbitrable.Status.Undisputed, "Dispute has already been created.");
+        require(_transaction.status == Status.Ongoing, "The transaction must not be disputed/executed.");
         require(_amount <= _transaction.amount, "Maximum amount available for payment exceeded.");
 
         _transaction.receiver.send(_amount);
@@ -182,9 +182,9 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function reimburse(uint256 _transactionID, Transaction memory _transaction, uint256 _amountReimbursed) public onlyValidTransaction(_transactionID, _transaction) {
         require(_transaction.receiver == msg.sender, "The caller must be the receiver.");
-        BinaryAppealable.Status status = arbitrableStorage.items[_transactionID].status;
-        require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
-        //require(_transaction.status == Status.NoDispute, "The transaction must not be disputed.");
+        BinaryArbitrable.Status status = arbitrableStorage.items[_transactionID].status;
+        require(status == BinaryArbitrable.Status.Undisputed, "Dispute has already been created.");
+        require(_transaction.status == Status.Ongoing, "The transaction must not be disputed/executed.");
         require(_amountReimbursed <= _transaction.amount, "Maximum reimbursement available exceeded.");
 
         _transaction.sender.send(_amountReimbursed);
@@ -201,9 +201,9 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function executeTransaction(uint256 _transactionID, Transaction memory _transaction) public onlyValidTransaction(_transactionID, _transaction) {
         require(block.timestamp >= _transaction.deadline, "Deadline not passed.");
-        BinaryAppealable.Status status = arbitrableStorage.items[_transactionID].status;
-        require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
-        //require(_transaction.status == Status.NoDispute, "The transaction must not be disputed.");
+        BinaryArbitrable.Status status = arbitrableStorage.items[_transactionID].status;
+        require(status == BinaryArbitrable.Status.Undisputed, "Dispute has already been created.");
+        require(_transaction.status == Status.Ongoing, "The transaction must not be disputed/executed.");
 
         _transaction.receiver.send(_transaction.amount);
         _transaction.amount = 0;
@@ -222,8 +222,9 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _transaction The transaction state.
      */
     function payArbitrationFeeBySender(uint256 _transactionID, Transaction memory _transaction) public payable onlyValidTransaction(_transactionID, _transaction) {
-        BinaryAppealable.Status status = arbitrableStorage.items[_transactionID].status;
-        require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
+        BinaryArbitrable.Status status = arbitrableStorage.items[_transactionID].status;
+        require(status == BinaryArbitrable.Status.Undisputed, "Dispute has already been created.");
+        require(_transaction.status < Status.Resolved, "The transaction must not be executed.");
         require(msg.sender == _transaction.sender, "The caller must be the sender.");
 
         uint256 arbitrationCost = arbitrableStorage.getArbitrationCost();
@@ -235,7 +236,7 @@ contract MockEscrow is IArbitrable, IEvidence {
 
         // The receiver still has to pay. This can also happen if he has paid, but arbitrationCost has increased.
         if (_transaction.receiverFee < arbitrationCost) {
-            _transaction.status = Status.WaitingReceiver;
+            _transaction.status = Status.WaitingReceiverFee;
             emit HasToPayFee(_transactionID, Party.Receiver);
         } else { // The receiver has also paid the fee. We create the dispute.
             raiseDispute(_transactionID, _transaction, arbitrationCost);
@@ -251,8 +252,9 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _transaction The transaction state.
      */
     function payArbitrationFeeByReceiver(uint256 _transactionID, Transaction memory _transaction) public payable onlyValidTransaction(_transactionID, _transaction) {
-        BinaryAppealable.Status status = arbitrableStorage.items[_transactionID].status;
-        require(status == BinaryAppealable.Status.Undisputed, "Dispute has already been created or because the transaction has been executed.");
+        BinaryArbitrable.Status status = arbitrableStorage.items[_transactionID].status;
+        require(status == BinaryArbitrable.Status.Undisputed, "Dispute has already been created.");
+        require(_transaction.status < Status.Resolved, "The transaction must not be executed.");
         require(msg.sender == _transaction.receiver, "The caller must be the receiver.");
         
         uint256 arbitrationCost = arbitrableStorage.getArbitrationCost();
@@ -263,7 +265,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         _transaction.lastInteraction = block.timestamp;
         // The sender still has to pay. This can also happen if he has paid, but arbitrationCost has increased.
         if (_transaction.senderFee < arbitrationCost) {
-            _transaction.status = Status.WaitingSender;
+            _transaction.status = Status.WaitingSenderFee;
             emit HasToPayFee(_transactionID, Party.Sender);
         } else { // The sender has also paid the fee. We create the dispute.
             raiseDispute(_transactionID, _transaction, arbitrationCost);
@@ -278,7 +280,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _transaction The transaction state.
      */
     function timeOutBySender(uint256 _transactionID, Transaction memory _transaction) public onlyValidTransaction(_transactionID, _transaction) {
-        require(_transaction.status == Status.WaitingReceiver, "The transaction is not waiting on the receiver.");
+        require(_transaction.status == Status.WaitingReceiverFee, "The transaction is not waiting on the receiver.");
         require(block.timestamp - _transaction.lastInteraction >= feeTimeout, "Timeout time has not passed yet.");
 
         if (_transaction.receiverFee != 0) {
@@ -301,7 +303,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _transaction The transaction state.
      */
     function timeOutByReceiver(uint256 _transactionID, Transaction memory _transaction) public onlyValidTransaction(_transactionID, _transaction) {
-        require(_transaction.status == Status.WaitingSender, "The transaction is not waiting on the sender.");
+        require(_transaction.status == Status.WaitingSenderFee, "The transaction is not waiting on the sender.");
         require(block.timestamp - _transaction.lastInteraction >= feeTimeout, "Timeout time has not passed yet.");
 
         if (_transaction.senderFee != 0) {
@@ -327,12 +329,14 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _arbitrationCost Amount to pay the arbitrator.
      */
     function raiseDispute(uint256 _transactionID, Transaction memory _transaction, uint256 _arbitrationCost) internal {
-        _transaction.disputeID = arbitrableStorage.createDispute(
+        arbitrableStorage.createDispute(
             _transactionID,
             _arbitrationCost,
             _transactionID,
             _transactionID
         );
+
+        _transaction.status = Status.Ongoing;
 
         // Refund sender if it overpaid.
         if (_transaction.senderFee > _arbitrationCost) {
@@ -370,7 +374,7 @@ contract MockEscrow is IArbitrable, IEvidence {
     function fundAppeal(uint256 _transactionID, Transaction calldata _transaction, Party _side) external payable onlyValidTransactionCD(_transactionID, _transaction) {
         arbitrableStorage.fundAppeal(
             _transactionID,
-            BinaryAppealable.Party(uint256(_side))
+            BinaryArbitrable.Party(uint256(_side))
         );
     } 
     
@@ -490,7 +494,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         view
         returns (
             uint256[3] memory paidFees,
-            BinaryAppealable.Party sideFunded,
+            BinaryArbitrable.Party sideFunded,
             uint256 feeRewards,
             bool appealed
         )
@@ -512,7 +516,6 @@ contract MockEscrow is IArbitrable, IEvidence {
                     _transaction.receiver,
                     _transaction.amount,
                     _transaction.deadline,
-                    _transaction.disputeID,
                     _transaction.senderFee,
                     _transaction.receiverFee,
                     _transaction.lastInteraction,
@@ -535,7 +538,6 @@ contract MockEscrow is IArbitrable, IEvidence {
                     _transaction.receiver,
                     _transaction.amount,
                     _transaction.deadline,
-                    _transaction.disputeID,
                     _transaction.senderFee,
                     _transaction.receiverFee,
                     _transaction.lastInteraction,
