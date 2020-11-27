@@ -43,7 +43,7 @@ contract MockEscrow is IArbitrable, IEvidence {
     /// @dev Stores the hashes of all transactions.
     bytes32[] public transactionHashes;
 
-    /// @dev Maps a transactionID to its respective appeal rounds.
+    /// @dev Contains most of the data related to arbitration.
     BinaryArbitrable.ArbitrableStorage public arbitrableStorage;
 
     // **************************** //
@@ -113,15 +113,6 @@ contract MockEscrow is IArbitrable, IEvidence {
     modifier onlyValidTransaction(uint256 _transactionID, Transaction memory _transaction) {
         require(
             transactionHashes[_transactionID - 1] == hashTransactionState(_transaction), 
-            "Transaction doesn't match stored hash."
-            );
-        _;
-    }
-
-    /// @dev Using calldata as data location makes gas consumption more efficient when caller function also uses calldata.
-    modifier onlyValidTransactionCD(uint256 _transactionID, Transaction calldata _transaction) {
-        require(
-            transactionHashes[_transactionID - 1] == hashTransactionStateCD(_transaction), 
             "Transaction doesn't match stored hash."
             );
         _;
@@ -358,7 +349,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _transaction The transaction state.
      *  @param _evidence A link to an evidence using its URI.
      */
-    function submitEvidence(uint256 _transactionID, Transaction calldata _transaction, string calldata _evidence) public onlyValidTransactionCD(_transactionID, _transaction) {
+    function submitEvidence(uint256 _transactionID, Transaction calldata _transaction, string calldata _evidence) public onlyValidTransaction(_transactionID, _transaction) {
         require(
             msg.sender == _transaction.sender || msg.sender == _transaction.receiver,
             "The caller must be the sender or the receiver."
@@ -371,7 +362,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _transaction The transaction state.
      *  @param _side The party that pays the appeal fee.
      */
-    function fundAppeal(uint256 _transactionID, Transaction calldata _transaction, Party _side) external payable onlyValidTransactionCD(_transactionID, _transaction) {
+    function fundAppeal(uint256 _transactionID, Transaction calldata _transaction, Party _side) external payable onlyValidTransaction(_transactionID, _transaction) {
         arbitrableStorage.fundAppeal(
             _transactionID,
             BinaryArbitrable.Party(uint256(_side))
@@ -385,7 +376,12 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _transaction The transaction state.
      *  @param _round The round from which to withdraw.
      */
-    function withdrawFeesAndRewards(address payable _beneficiary, uint256 _transactionID, Transaction calldata _transaction, uint256 _round) public onlyValidTransactionCD(_transactionID, _transaction) {
+    function withdrawFeesAndRewards(
+        address payable _beneficiary, 
+        uint256 _transactionID, 
+        Transaction calldata _transaction, 
+        uint256 _round
+    ) public onlyValidTransaction(_transactionID, _transaction) {
         arbitrableStorage.withdrawFeesAndRewards(_transactionID, _beneficiary, _round);
     }
     
@@ -397,7 +393,12 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _cursor The round from where to start withdrawing.
      *  @param _count The number of rounds to iterate. If set to 0 or a value larger than the number of rounds, iterates until the last round.
      */
-    function batchRoundWithdraw(address payable _beneficiary, uint256 _transactionID, Transaction calldata _transaction, uint256 _cursor, uint256 _count) public onlyValidTransactionCD(_transactionID, _transaction) {
+    function batchRoundWithdraw(
+        address payable _beneficiary, 
+        uint256 _transactionID, 
+        Transaction calldata _transaction, 
+        uint256 _cursor, uint256 _count
+    ) public onlyValidTransaction(_transactionID, _transaction) {
         arbitrableStorage.withdrawRoundBatch(_transactionID, _beneficiary, _cursor, _count);
     }
 
@@ -451,7 +452,11 @@ contract MockEscrow is IArbitrable, IEvidence {
      *  @param _beneficiary The contributor for which to query.
      *  @return total The total amount of wei available to withdraw.
      */
-    function amountWithdrawable(uint256 _transactionID, Transaction calldata _transaction, address _beneficiary) public view onlyValidTransactionCD(_transactionID, _transaction) returns (uint256 total) {
+    function amountWithdrawable(
+        uint256 _transactionID, 
+        Transaction calldata _transaction, 
+        address _beneficiary
+    ) public view onlyValidTransaction(_transactionID, _transaction) returns (uint256 total) {
         total = arbitrableStorage.amountWithdrawable(_transactionID, _beneficiary);
     }
 
@@ -509,28 +514,6 @@ contract MockEscrow is IArbitrable, IEvidence {
      * @return The hash of the transaction state.
      */
     function hashTransactionState(Transaction memory _transaction) public pure returns (bytes32) {
-        return
-            keccak256(
-                abi.encodePacked(
-                    _transaction.sender,
-                    _transaction.receiver,
-                    _transaction.amount,
-                    _transaction.deadline,
-                    _transaction.senderFee,
-                    _transaction.receiverFee,
-                    _transaction.lastInteraction,
-                    _transaction.status
-                )
-            );
-    }
-
-    /**
-     * @dev Gets the hashed version of the transaction state.
-     * This function is cheap and can only be used when the caller function is using a Transaction object stored in calldata.
-     * @param _transaction The transaction state.
-     * @return The hash of the transaction state.
-     */
-    function hashTransactionStateCD(Transaction calldata _transaction) public pure returns (bytes32) {
         return
             keccak256(
                 abi.encodePacked(

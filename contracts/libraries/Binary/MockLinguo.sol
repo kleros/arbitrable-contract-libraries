@@ -9,7 +9,7 @@
  */
 pragma solidity >=0.7;
 
-import "./BinaryAppealable.sol";
+import "./BinaryArbitrable.sol";
 import "@kleros/erc-792/contracts/IArbitrable.sol";
 import "@kleros/erc-792/contracts/IArbitrator.sol";
 import "@kleros/erc-792/contracts/erc-1497/IEvidence.sol";
@@ -23,7 +23,7 @@ import "@kleros/ethereum-libraries/contracts/CappedMath.sol";
  */
 contract Linguo is IArbitrable, IEvidence {
     using CappedMath for uint256;
-    using BinaryAppealable for BinaryAppealable.Round[];
+    using BinaryArbitrable for BinaryArbitrable.ArbitrableStorage;
 
     /* *** Contract variables *** */
     uint8 public constant VERSION_ID = 0; // Value that represents the version of the contract. The value is incremented each time the new version is deployed. Range for LinguoETH: 0-127, LinguoToken: 128-255.
@@ -49,25 +49,18 @@ contract Linguo is IArbitrable, IEvidence {
         uint256 requesterDeposit; // The deposit requester makes when creating the task. Once the task is assigned this deposit will be partially reimbursed and its value replaced by the task price.
         uint256 sumDeposit; // The sum of the deposits of the translator and the challenger, if any. This value (minus arbitration fees) will be paid to the party that wins the dispute.
         address payable[3] parties; // Translator and challenger of the task.
-        uint256 disputeID; // The ID of the dispute created in the arbitrator contract.
-        BinaryAppealable.Round[] rounds; // Tracks each appeal round of a dispute.
-        uint256 ruling; // Ruling given to the dispute of the task by the arbitrator.
     }
 
     address public governor = msg.sender; // The governor of the contract.
-    IArbitrator public immutable arbitrator; // The address of the ERC-792 Arbitrator.
-    bytes public arbitratorExtraData; // Extra data to allow creating a dispute on the arbitrator.
     uint256 public reviewTimeout; // Time in seconds, during which the submitted translation can be challenged.
     // All multipliers below are in basis points.
     uint256 public translationMultiplier; // Multiplier for calculating the value of the deposit translator must pay to self-assign a task.
     uint256 public challengeMultiplier; // Multiplier for calculating the value of the deposit challenger must pay to challenge a translation.
-    uint256 public sharedStakeMultiplier; // Multiplier for calculating the appeal fee that must be paid by the submitter in the case where there isn't a winner and loser (e.g. when the arbitrator ruled "refuse to arbitrate").
-    uint256 public winnerStakeMultiplier; // Multiplier for calculating the appeal fee of the party that won the previous round.
-    uint256 public loserStakeMultiplier; // Multiplier for calculating the appeal fee of the party that lost the previous round.
 
     Task[] public tasks; // Stores all created tasks.
 
-    mapping(uint256 => uint256) public disputeIDtoTaskID; // Maps a disputeID to its respective task.
+    /// @dev Contains most of the data related to arbitration.
+    BinaryArbitrable.ArbitrableStorage public arbitrableStorage;
 
     /* *** Events *** */
 
@@ -113,20 +106,6 @@ contract Linguo is IArbitrable, IEvidence {
      */
     event TaskResolved(uint256 indexed _taskID, string _reason, uint256 _timestamp);
 
-    /** @dev To be emitted when someone contributes to the appeal process.
-     *  @param _taskID The ID of the respective task.
-     *  @param _party The party which received the contribution.
-     *  @param _contributor The address of the contributor.
-     *  @param _amount The amount contributed.
-     */
-    event AppealContribution(uint256 indexed _taskID, Party _party, address indexed _contributor, uint256 _amount);
-
-    /** @dev To be emitted when the appeal fees of one of the parties are fully funded.
-     *  @param _taskID The ID of the respective task.
-     *  @param _party The party that is fully funded.
-     */
-    event HasPaidAppealFee(uint256 indexed _taskID, Party _party);
-
     /* *** Modifiers *** */
     modifier onlyGovernor() {
         require(msg.sender == governor, "Only governor is allowed to perform this.");
@@ -153,14 +132,11 @@ contract Linguo is IArbitrable, IEvidence {
         uint256 _winnerStakeMultiplier,
         uint256 _loserStakeMultiplier
     ) public {
-        arbitrator = _arbitrator;
-        arbitratorExtraData = _arbitratorExtraData;
         reviewTimeout = _reviewTimeout;
         translationMultiplier = _translationMultiplier;
         challengeMultiplier = _challengeMultiplier;
-        sharedStakeMultiplier = _sharedStakeMultiplier;
-        winnerStakeMultiplier = _winnerStakeMultiplier;
-        loserStakeMultiplier = _loserStakeMultiplier;
+        arbitrableStorage.setMultipliers(_sharedStakeMultiplier, _winnerStakeMultiplier, _loserStakeMultiplier);
+        arbitrableStorage.setArbitrator(_arbitrator, _arbitratorExtraData);
     }
 
     // ******************** //
@@ -199,21 +175,33 @@ contract Linguo is IArbitrable, IEvidence {
      *  @param _sharedStakeMultiplier A new value of the multiplier of the appeal cost in case where there was no winner/loser in previous round. In basis point.
      */
     function changeSharedStakeMultiplier(uint256 _sharedStakeMultiplier) public onlyGovernor {
-        sharedStakeMultiplier = _sharedStakeMultiplier;
+        arbitrableStorage.setMultipliers(
+            _sharedStakeMultiplier, 
+            arbitrableStorage.winnerStakeMultiplier, 
+            arbitrableStorage.loserStakeMultiplier
+        );
     }
 
     /** @dev Changes the percentage of arbitration fees that must be paid as a fee stake by the party that won the previous round.
      *  @param _winnerStakeMultiplier A new value of the multiplier of the appeal cost that the winner of the previous round has to pay. In basis points.
      */
     function changeWinnerStakeMultiplier(uint256 _winnerStakeMultiplier) public onlyGovernor {
-        winnerStakeMultiplier = _winnerStakeMultiplier;
+        arbitrableStorage.setMultipliers(
+            arbitrableStorage.sharedStakeMultiplier, 
+            _winnerStakeMultiplier, 
+            arbitrableStorage.loserStakeMultiplier
+        );
     }
 
     /** @dev Changes the percentage of arbitration fees that must be paid as a fee stake by the party that lost the previous round.
      *  @param _loserStakeMultiplier A new value for the multiplier of the appeal cost that the party that lost the previous round has to pay. In basis points.
      */
     function changeLoserStakeMultiplier(uint256 _loserStakeMultiplier) public onlyGovernor {
-        loserStakeMultiplier = _loserStakeMultiplier;
+        arbitrableStorage.setMultipliers(
+            arbitrableStorage.sharedStakeMultiplier, 
+            arbitrableStorage.winnerStakeMultiplier, 
+            _loserStakeMultiplier
+        );
     }
 
     // **************************** //
@@ -259,7 +247,7 @@ contract Linguo is IArbitrable, IEvidence {
         uint256 price = task.minPrice +
             ((task.maxPrice - task.minPrice) * (block.timestamp - task.lastInteraction)) /
             task.submissionTimeout;
-        uint256 arbitrationCost = arbitrator.arbitrationCost(arbitratorExtraData);
+        uint256 arbitrationCost = arbitrableStorage.getArbitrationCost();
         uint256 translatorDeposit = arbitrationCost.addCap((translationMultiplier.mulCap(price)) / MULTIPLIER_DIVISOR);
 
         require(task.status == Status.Created, "Task has already been assigned or reimbursed.");
@@ -348,7 +336,7 @@ contract Linguo is IArbitrable, IEvidence {
     function challengeTranslation(uint256 _taskID, string calldata _evidence) external payable {
         Task storage task = tasks[_taskID];
 
-        uint256 arbitrationCost = arbitrator.arbitrationCost(arbitratorExtraData);
+        uint256 arbitrationCost = arbitrableStorage.getArbitrationCost();
         uint256 challengeDeposit = arbitrationCost.addCap(
             (challengeMultiplier.mulCap(task.requesterDeposit)) / MULTIPLIER_DIVISOR
         );
@@ -360,18 +348,14 @@ contract Linguo is IArbitrable, IEvidence {
         task.status = Status.DisputeCreated;
         task.parties[uint256(Party.Challenger)] = msg.sender;
 
-        task.disputeID = arbitrator.createDispute{value: arbitrationCost}(2, arbitratorExtraData);
-        disputeIDtoTaskID[task.disputeID] = _taskID;
-        task.rounds.push();
+        arbitrableStorage.createDispute(_taskID, arbitrationCost, _taskID, _taskID);
         task.sumDeposit = task.sumDeposit.addCap(challengeDeposit).subCap(arbitrationCost);
 
         uint256 remainder = msg.value - challengeDeposit;
         msg.sender.send(remainder);
 
-        emit Dispute(arbitrator, task.disputeID, _taskID, _taskID);
         emit TranslationChallenged(_taskID, msg.sender, block.timestamp);
-
-        if (bytes(_evidence).length > 0) emit Evidence(arbitrator, _taskID, msg.sender, _evidence);
+        arbitrableStorage.submitEvidence(_taskID, _taskID, _evidence);
     }
 
     /** @dev Takes up to the total amount required to fund a side of an appeal. Reimburses the rest. Creates an appeal if all sides are fully funded.
@@ -379,24 +363,10 @@ contract Linguo is IArbitrable, IEvidence {
      *  @param _side The party that pays the appeal fee.
      */
     function fundAppeal(uint256 _taskID, Party _side) external payable {
-        Task storage task = tasks[_taskID];
-        require(task.status == Status.DisputeCreated, "No dispute to appeal.");
-
-        BinaryAppealable.Round[] storage rounds = task.rounds;
-        (uint256 contribution, bool sideFullyFunded, bool appealCreated) = rounds.fundAppeal(
-            BinaryAppealable.Party(uint256(_side)), 
-            task.disputeID, 
-            arbitrator, 
-            arbitratorExtraData, 
-            loserStakeMultiplier,
-            winnerStakeMultiplier,
-            sharedStakeMultiplier,
-            MULTIPLIER_DIVISOR
+        arbitrableStorage.fundAppeal(
+            _taskID,
+            BinaryArbitrable.Party(uint256(_side))
         );
-        emit AppealContribution(_taskID, _side, msg.sender, contribution);
-        if (sideFullyFunded)
-            emit HasPaidAppealFee(_taskID, _side);
-
     }
 
     /** @dev Withdraws contributions of appeal rounds. Reimburses contributions if no disputes were raised. If a dispute was raised, sends the fee stake rewards and reimbursements proportional to the contributions made to the winner of a dispute.
@@ -409,11 +379,7 @@ contract Linguo is IArbitrable, IEvidence {
         uint256 _taskID,
         uint256 _round
     ) public {
-        Task storage task = tasks[_taskID];
-        require(task.status == Status.Resolved, "The task should be resolved.");
-
-        BinaryAppealable.Round[] storage rounds = task.rounds;
-        rounds.withdrawFeesAndRewards(_beneficiary, _round, uint256(task.ruling));
+        arbitrableStorage.withdrawFeesAndRewards(_taskID, _beneficiary, _round);
     }
 
     /** @dev Withdraws contributions of multiple appeal rounds at once. This function is O(n) where n is the number of rounds. This could exceed the gas limit, therefore this function should be used only as a utility and not be relied upon by other contracts.
@@ -428,11 +394,7 @@ contract Linguo is IArbitrable, IEvidence {
         uint256 _cursor,
         uint256 _count
     ) public {
-        Task storage task = tasks[_taskID];
-        require(task.status == Status.Resolved, "The task should be resolved.");
-        
-        BinaryAppealable.Round[] storage rounds = task.rounds;
-        rounds.withdrawRoundBatch(_beneficiary, _cursor, _count, uint256(task.ruling));
+        arbitrableStorage.withdrawRoundBatch(_taskID, _beneficiary, _cursor, _count);
     }
 
     /** @dev Gives the ruling for a dispute. Can only be called by the arbitrator.
@@ -441,39 +403,27 @@ contract Linguo is IArbitrable, IEvidence {
      *  @param _ruling Ruling given by the arbitrator. Note that 0 is reserved for "Refuse to arbitrate".
      */
     function rule(uint256 _disputeID, uint256 _ruling) external override {
-        Party resultRuling = Party(_ruling);
-        uint256 taskID = disputeIDtoTaskID[_disputeID];
-        Task storage task = tasks[taskID];
-        BinaryAppealable.Round storage round = task.rounds[task.rounds.length - 1];
-        require(msg.sender == address(arbitrator), "Must be called by the arbitrator.");
-        require(task.status == Status.DisputeCreated, "The dispute has already been resolved.");
-
-        // If only one side paid its fees we assume the ruling to be in its favor.
-        if (round.sideFunded == BinaryAppealable.Party(uint256(Party.Translator))) resultRuling = Party.Translator;
-        else if (round.sideFunded == BinaryAppealable.Party(uint256(Party.Challenger))) resultRuling = Party.Challenger;
-
-        emit Ruling(IArbitrator(msg.sender), _disputeID, uint256(resultRuling));
-        executeRuling(_disputeID, uint256(resultRuling));
+        arbitrableStorage.processRuling(_disputeID, _ruling);
+        executeRuling(_disputeID);
     }
 
     /** @dev Executes the ruling of a dispute.
      *  @param _disputeID ID of the dispute in the Arbitrator contract.
-     *  @param _ruling Ruling given by the arbitrator. Note that 0 is reserved for "Refuse to arbitrate".
      */
-    function executeRuling(uint256 _disputeID, uint256 _ruling) internal {
-        uint256 taskID = disputeIDtoTaskID[_disputeID];
+    function executeRuling(uint256 _disputeID) internal {
+        uint256 taskID = arbitrableStorage.disputeIDtoItemID[_disputeID];
         Task storage task = tasks[taskID];
         task.status = Status.Resolved;
-        task.ruling = _ruling;
+        Party ruling = Party(uint256(arbitrableStorage.getFinalRuling(taskID)));
         uint256 amount;
 
-        if (_ruling == uint256(Party.None)) {
+        if (ruling == Party.None) {
             task.requester.send(task.requesterDeposit);
             // The value of sumDeposit is split among parties in this case. If the sum is uneven the value of 1 wei can be burnt.
             amount = task.sumDeposit / 2;
             task.parties[uint256(Party.Translator)].send(amount);
             task.parties[uint256(Party.Challenger)].send(amount);
-        } else if (_ruling == uint256(Party.Translator)) {
+        } else if (ruling == Party.Translator) {
             amount = task.requesterDeposit + task.sumDeposit;
             task.parties[uint256(Party.Translator)].send(amount);
         } else {
@@ -492,9 +442,7 @@ contract Linguo is IArbitrable, IEvidence {
      *  @param _evidence A link to evidence using its URI.
      */
     function submitEvidence(uint256 _taskID, string calldata _evidence) external {
-        Task storage task = tasks[_taskID];
-        require(task.status != Status.Resolved, "The task must not already be resolved.");
-        emit Evidence(arbitrator, _taskID, msg.sender, _evidence);
+        arbitrableStorage.submitEvidence(_taskID, _taskID, _evidence);
     }
 
     // ******************** //
@@ -507,10 +455,7 @@ contract Linguo is IArbitrable, IEvidence {
      *  @return total The total amount of wei available to withdraw.
      */
     function amountWithdrawable(uint256 _taskID, address payable _beneficiary) external view returns (uint256 total) {
-        Task storage task = tasks[_taskID];
-        if (task.status != Status.Resolved) return total;
-
-        total = task.rounds.amountWithdrawable(_beneficiary, uint256(task.ruling));
+        total = arbitrableStorage.amountWithdrawable(_taskID, _beneficiary);
     }
 
     /** @dev Gets the deposit required for self-assigning the task.
@@ -525,7 +470,7 @@ contract Linguo is IArbitrable, IEvidence {
             uint256 price = task.minPrice +
                 ((task.maxPrice - task.minPrice) * (block.timestamp - task.lastInteraction)) /
                 task.submissionTimeout;
-            uint256 arbitrationCost = arbitrator.arbitrationCost(arbitratorExtraData);
+            uint256 arbitrationCost = arbitrableStorage.getArbitrationCost();
             deposit = arbitrationCost.addCap((translationMultiplier.mulCap(price)) / MULTIPLIER_DIVISOR);
         }
     }
@@ -539,7 +484,7 @@ contract Linguo is IArbitrable, IEvidence {
         if (block.timestamp - task.lastInteraction > reviewTimeout || task.status != Status.AwaitingReview) {
             deposit = NOT_PAYABLE_VALUE;
         } else {
-            uint256 arbitrationCost = arbitrator.arbitrationCost(arbitratorExtraData);
+            uint256 arbitrationCost = arbitrableStorage.getArbitrationCost();
             deposit = arbitrationCost.addCap((challengeMultiplier.mulCap(task.requesterDeposit)) / MULTIPLIER_DIVISOR);
         }
     }
@@ -572,8 +517,7 @@ contract Linguo is IArbitrable, IEvidence {
      *  @return The number of rounds.
      */
     function getNumberOfRounds(uint256 _taskID) public view returns (uint256) {
-        Task storage task = tasks[_taskID];
-        return task.rounds.length;
+        return arbitrableStorage.getNumberOfRounds(_taskID);
     }
 
     /** @dev Gets the contributions made by a party for a given round of appeal of a task.
@@ -587,9 +531,7 @@ contract Linguo is IArbitrable, IEvidence {
         uint256 _round,
         address _contributor
     ) public view returns (uint256[3] memory contributions) {
-        Task storage task = tasks[_taskID];
-        BinaryAppealable.Round storage round = task.rounds[_round];
-        contributions = round.contributions[_contributor];
+        return arbitrableStorage.getContributions(_taskID, _round, _contributor);
     }
 
     /** @dev Gets the addresses of parties of a specified task.
@@ -611,18 +553,11 @@ contract Linguo is IArbitrable, IEvidence {
         view
         returns (
             uint256[3] memory paidFees,
-            Party sideFunded,
+            BinaryArbitrable.Party sideFunded,
             uint256 feeRewards,
             bool appealed
         )
     {
-        Task storage task = tasks[_taskID];
-        BinaryAppealable.Round storage round = task.rounds[_round];
-        return (
-            round.paidFees,
-            Party(uint256(round.sideFunded)),
-            round.feeRewards,
-            _round != task.rounds.length - 1
-        );
+        return arbitrableStorage.getRoundInfo(_taskID, _round);
     }
 }

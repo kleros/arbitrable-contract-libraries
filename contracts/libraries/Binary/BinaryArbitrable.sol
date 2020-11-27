@@ -43,6 +43,7 @@ library BinaryArbitrable {
         mapping(uint256 => uint256) disputeIDtoItemID; // disputeIDtoItemID[disputeID]
     }
 
+    /// @dev events apparently have to be defined both in the library and in the contract where the library is used.
     /// @dev See {@kleros/erc-792/contracts/IArbitrable.sol}
     event Ruling(IArbitrator indexed _arbitrator, uint256 indexed _disputeID, uint256 _ruling);
 
@@ -118,7 +119,8 @@ library BinaryArbitrable {
             "Must not send evidence if the dispute is resolved."
         );
 
-        emit Evidence(self.arbitrator, evidenceGroupID, msg.sender, _evidence);
+        if (bytes(_evidence).length > 0)
+            emit Evidence(self.arbitrator, evidenceGroupID, msg.sender, _evidence);
     }
 
     function fundAppeal(ArbitrableStorage storage self, uint256 itemID, Party side) internal {
