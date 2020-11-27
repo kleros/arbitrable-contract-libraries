@@ -403,27 +403,28 @@ contract Linguo is IArbitrable, IEvidence {
      *  @param _ruling Ruling given by the arbitrator. Note that 0 is reserved for "Refuse to arbitrate".
      */
     function rule(uint256 _disputeID, uint256 _ruling) external override {
-        arbitrableStorage.processRuling(_disputeID, _ruling);
-        executeRuling(_disputeID);
+        Party finalRuling = Party(uint256(
+            arbitrableStorage.processRuling(_disputeID, _ruling)
+        ));
+        executeRuling(_disputeID, finalRuling);
     }
 
     /** @dev Executes the ruling of a dispute.
      *  @param _disputeID ID of the dispute in the Arbitrator contract.
      */
-    function executeRuling(uint256 _disputeID) internal {
+    function executeRuling(uint256 _disputeID, Party _finalRuling) internal {
         uint256 taskID = arbitrableStorage.disputeIDtoItemID[_disputeID];
         Task storage task = tasks[taskID];
         task.status = Status.Resolved;
-        Party ruling = Party(uint256(arbitrableStorage.getFinalRuling(taskID)));
         uint256 amount;
 
-        if (ruling == Party.None) {
+        if (_finalRuling == Party.None) {
             task.requester.send(task.requesterDeposit);
             // The value of sumDeposit is split among parties in this case. If the sum is uneven the value of 1 wei can be burnt.
             amount = task.sumDeposit / 2;
             task.parties[uint256(Party.Translator)].send(amount);
             task.parties[uint256(Party.Challenger)].send(amount);
-        } else if (ruling == Party.Translator) {
+        } else if (_finalRuling == Party.Translator) {
             amount = task.requesterDeposit + task.sumDeposit;
             task.parties[uint256(Party.Translator)].send(amount);
         } else {
