@@ -1,5 +1,3 @@
-# appeal-utils
-
 <p align="center"><img width="15%" src="./assets/images/logo-kleros.svg"></p>
 
 <div align="center">
