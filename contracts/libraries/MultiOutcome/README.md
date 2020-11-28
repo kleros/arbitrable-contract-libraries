@@ -4,7 +4,7 @@
 |:-|:-|
 | Arbitrator definition | Contract level |
 | Arbitrator mutable | No |
-| Ruling | Binary |
+| Ruling | 2<sup>256</sup> - 1 |
 | Dispute creation funding | Defined by arbitrable contract |
 | Appeals allowed | Yes |
 | Appeal funding | Crowdfunding |
