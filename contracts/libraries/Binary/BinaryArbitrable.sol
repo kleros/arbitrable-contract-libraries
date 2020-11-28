@@ -75,7 +75,7 @@ library BinaryArbitrable {
         uint256 _sharedStakeMultiplier, 
         uint256 _winnerStakeMultiplier, 
         uint256 _loserStakeMultiplier
-        ) internal {
+    ) internal {
         self.sharedStakeMultiplier = _sharedStakeMultiplier;
         self.winnerStakeMultiplier = _winnerStakeMultiplier;
         self.loserStakeMultiplier = _loserStakeMultiplier;
@@ -85,55 +85,57 @@ library BinaryArbitrable {
         ArbitrableStorage storage self, 
         IArbitrator _arbitrator, 
         bytes memory _arbitratorExtraData
-        ) internal {
+    ) internal {
+        require(self.arbitrator == IArbitrator(0x0), "Arbitrator already set.");
+        require(_arbitrator != IArbitrator(0x0), "Invalid arbitrator.");
         self.arbitrator = _arbitrator;
         self.arbitratorExtraData = _arbitratorExtraData;
     }
 
     function createDispute(
         ArbitrableStorage storage self, 
-        uint256 itemID,
+        uint256 _itemID,
         uint256 _arbitrationCost,
         uint256 _metaEvidenceID,
         uint256 _evidenceGroupID
-        ) internal returns(uint256 disputeID) {
+    ) internal returns(uint256 disputeID) {
 
-        ItemData storage item = self.items[itemID];
+        ItemData storage item = self.items[_itemID];
         require(item.status != Status.Undisputed, "Item already disputed.");
         item.status = Status.Disputed;
         disputeID = self.arbitrator.createDispute{value: _arbitrationCost}(AMOUNT_OF_CHOICES, self.arbitratorExtraData);
         item.rounds.push();
-        self.disputeIDtoItemID[disputeID] = itemID;
+        self.disputeIDtoItemID[disputeID] = _itemID;
         item.disputeID = disputeID;
         emit Dispute(self.arbitrator, disputeID, _metaEvidenceID, _evidenceGroupID);
     }
 
     function submitEvidence(
         ArbitrableStorage storage self, 
-        uint256 itemID,
-        uint256 evidenceGroupID,
+        uint256 _itemID,
+        uint256 _evidenceGroupID,
         string memory _evidence
-        ) internal {
+    ) internal {
         require(
-            self.items[itemID].status < Status.Resolved,
+            self.items[_itemID].status < Status.Resolved,
             "Must not send evidence if the dispute is resolved."
         );
 
         if (bytes(_evidence).length > 0)
-            emit Evidence(self.arbitrator, evidenceGroupID, msg.sender, _evidence);
+            emit Evidence(self.arbitrator, _evidenceGroupID, msg.sender, _evidence);
     }
 
-    function fundAppeal(ArbitrableStorage storage self, uint256 itemID, Party side) internal {
-        ItemData storage item = self.items[itemID];
+    function fundAppeal(ArbitrableStorage storage self, uint256 _itemID, Party _side) internal {
+        ItemData storage item = self.items[_itemID];
         require(item.status == Status.Disputed, "No ongoing dispute to appeal.");
-        require(side != Party.None, "Invalid party.");
+        require(_side != Party.None, "Invalid party.");
 
         (uint256 appealPeriodStart, uint256 appealPeriodEnd) = self.arbitrator.appealPeriod(item.disputeID);
         require(block.timestamp >= appealPeriodStart && block.timestamp < appealPeriodEnd, "Not in appeal period.");
 
         uint256 multiplier;
         uint256 winner = self.arbitrator.currentRuling(item.disputeID);
-        if (winner == uint256(side)){
+        if (winner == uint256(_side)){
             multiplier = self.winnerStakeMultiplier;
         } else if (winner == 0){
             multiplier = self.sharedStakeMultiplier;
@@ -143,7 +145,7 @@ library BinaryArbitrable {
         }
 
         Round storage round = item.rounds[item.rounds.length - 1];
-        require(side != round.sideFunded, "Appeal fee has already been paid.");
+        require(_side != round.sideFunded, "Appeal fee has already been paid.");
 
         uint256 appealCost = self.arbitrator.appealCost(item.disputeID, self.arbitratorExtraData);
         uint256 totalCost = appealCost.addCap((appealCost.mulCap(multiplier)) / MULTIPLIER_DIVISOR);
@@ -151,19 +153,19 @@ library BinaryArbitrable {
         // Take up to the amount necessary to fund the current round at the current costs.
         uint256 contribution;
         uint256 remainingETH;
-        (contribution, remainingETH) = calculateContribution(msg.value, totalCost.subCap(round.paidFees[uint256(side)]));
-        round.contributions[msg.sender][uint256(side)] += contribution;
-        round.paidFees[uint256(side)] += contribution;
-        emit AppealContribution(itemID, side, msg.sender, item.rounds.length - 1, contribution);
+        (contribution, remainingETH) = calculateContribution(msg.value, totalCost.subCap(round.paidFees[uint256(_side)]));
+        round.contributions[msg.sender][uint256(_side)] += contribution;
+        round.paidFees[uint256(_side)] += contribution;
+        emit AppealContribution(_itemID, _side, msg.sender, item.rounds.length - 1, contribution);
 
         // Reimburse leftover ETH if any.
         if (remainingETH > 0)
             msg.sender.send(remainingETH); // Deliberate use of send in order to not block the contract in case of reverting fallback.
 
-        if (round.paidFees[uint256(side)] >= totalCost) {
-            emit HasPaidAppealFee(itemID, side, item.rounds.length - 1);
+        if (round.paidFees[uint256(_side)] >= totalCost) {
+            emit HasPaidAppealFee(_itemID, _side, item.rounds.length - 1);
             if (round.sideFunded == Party.None) {
-                round.sideFunded = side;
+                round.sideFunded = _side;
             } else {
                 // Both sides are fully funded. Create an appeal.
                 self.arbitrator.appeal{value: appealCost}(item.disputeID, self.arbitratorExtraData);
@@ -178,7 +180,7 @@ library BinaryArbitrable {
         ArbitrableStorage storage self, 
         uint256 _disputeID, 
         uint256 _ruling
-        ) internal returns(Party finalRuling) {
+    ) internal returns(Party finalRuling) {
         
         uint256 itemID = self.disputeIDtoItemID[_disputeID];
         ItemData storage item = self.items[itemID];
@@ -203,12 +205,12 @@ library BinaryArbitrable {
 
     function _withdrawFeesAndRewards(
         ArbitrableStorage storage self, 
-        uint256 itemID, 
+        uint256 _itemID, 
         address _beneficiary, 
         uint256 _round
-        ) internal returns(uint256 reward) {
+    ) internal returns(uint256 reward) {
 
-        ItemData storage item = self.items[itemID];
+        ItemData storage item = self.items[_itemID];
         Round storage round = item.rounds[_round];
         uint256[3] storage contributionTo = round.contributions[_beneficiary];
         uint256 lastRound = item.rounds.length - 1;
@@ -233,26 +235,24 @@ library BinaryArbitrable {
 
     function withdrawFeesAndRewards(
         ArbitrableStorage storage self, 
-        uint256 itemID, 
+        uint256 _itemID, 
         address payable _beneficiary, 
         uint256 _round
-        ) internal {
-
-        require(self.items[itemID].status == Status.Resolved, "Dispute not resolved.");
-
-        uint256 reward = _withdrawFeesAndRewards(self, itemID, _beneficiary, _round);
+    ) internal {
+        require(self.items[_itemID].status == Status.Resolved, "Dispute not resolved.");
+        uint256 reward = _withdrawFeesAndRewards(self, _itemID, _beneficiary, _round);
         _beneficiary.send(reward); // It is the user responsibility to accept ETH.
     }
     
     function withdrawRoundBatch(
         ArbitrableStorage storage self, 
-        uint256 itemID, 
+        uint256 _itemID, 
         address payable _beneficiary, 
         uint256 _cursor, 
         uint256 _count
-        ) internal {
+    ) internal {
 
-        ItemData storage item = self.items[itemID];
+        ItemData storage item = self.items[_itemID];
         require(item.status == Status.Resolved, "Dispute not resolved.");
 
         uint256 maxRound = _count == 0 ? item.rounds.length : _cursor + _count;
@@ -260,18 +260,18 @@ library BinaryArbitrable {
         if (maxRound > item.rounds.length)
             maxRound = item.rounds.length;
         for (uint256 i = _cursor; i < maxRound; i++)
-            reward += _withdrawFeesAndRewards(self, itemID, _beneficiary, i);
+            reward += _withdrawFeesAndRewards(self, _itemID, _beneficiary, i);
 
         _beneficiary.send(reward); // It is the user responsibility to accept ETH.
     }
 
     function amountWithdrawable(
         ArbitrableStorage storage self, 
-        uint256 itemID, 
+        uint256 _itemID, 
         address _beneficiary
-        ) internal view returns(uint256 total) {
+    ) internal view returns(uint256 total) {
 
-        ItemData storage item = self.items[itemID];
+        ItemData storage item = self.items[_itemID];
         if (item.status != Status.Resolved) return total;        
 
         uint256 totalRounds = item.rounds.length;
@@ -325,7 +325,7 @@ library BinaryArbitrable {
 
     function getRoundInfo(
         ArbitrableStorage storage self, 
-        uint256 itemID, 
+        uint256 _itemID, 
         uint256 _round
         ) internal view returns(
             uint256[3] memory paidFees,
@@ -334,7 +334,7 @@ library BinaryArbitrable {
             bool appealed
         ) {
         
-        ItemData storage item = self.items[itemID];
+        ItemData storage item = self.items[_itemID];
         Round storage round = item.rounds[_round];
 
         return (
@@ -347,12 +347,12 @@ library BinaryArbitrable {
 
     function getContributions(
         ArbitrableStorage storage self, 
-        uint256 itemID, 
+        uint256 _itemID, 
         uint256 _round,
         address _contributor
-        ) internal view returns(uint256[3] memory contributions) {
+    ) internal view returns(uint256[3] memory contributions) {
         
-        ItemData storage item = self.items[itemID];
+        ItemData storage item = self.items[_itemID];
         Round storage round = item.rounds[_round];
         contributions = round.contributions[_contributor];
     }
