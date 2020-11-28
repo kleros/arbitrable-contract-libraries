@@ -18,7 +18,7 @@
 
 # Overview
 
-Create a dispute. Wait for ruling. Appeal. Enforce final ruling. Make justice.
+Create dispute. Wait for ruling. Appeal. Enforce final ruling. Make justice.
 
 Here you are going to find solidity libraries that help you create arbitrable contracts compliant with erc-792 and erc-1497 standards in a glimpse.  
 
