@@ -131,7 +131,7 @@ contract Linguo is IArbitrable, IEvidence {
         uint256 _sharedStakeMultiplier,
         uint256 _winnerStakeMultiplier,
         uint256 _loserStakeMultiplier
-    ) public {
+    ) {
         reviewTimeout = _reviewTimeout;
         translationMultiplier = _translationMultiplier;
         challengeMultiplier = _challengeMultiplier;

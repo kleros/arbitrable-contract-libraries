@@ -397,7 +397,8 @@ contract MockEscrow is IArbitrable, IEvidence {
         address payable _beneficiary, 
         uint256 _transactionID, 
         Transaction calldata _transaction, 
-        uint256 _cursor, uint256 _count
+        uint256 _cursor, 
+        uint256 _count
     ) public onlyValidTransaction(_transactionID, _transaction) {
         arbitrableStorage.withdrawRoundBatch(_transactionID, _beneficiary, _cursor, _count);
     }
