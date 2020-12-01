@@ -1,0 +1,19 @@
+{
+  "extends": "solhint:recommended",
+  "rules": {
+    "compiler-version": "off",
+    "func-visibility": "off",
+    "reason-string": "off",
+    "check-send-result": "off",
+    "not-rely-on-time": "off",
+    "multiple-sends": "off",
+
+    "mark-callable-contracts": "off",
+
+    "constructor-syntax": "error",
+    "func-param-name-mixedcase": "error",
+    "modifier-name-mixedcase": "error",
+    "ordering": "error",
+    "state-visibility": "error"
+  }
+}
