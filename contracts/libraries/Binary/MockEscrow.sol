@@ -160,7 +160,7 @@ contract MockEscrow is IArbitrable, IEvidence {
 
         _transaction.receiver.send(_amount);
         _transaction.amount -= _amount;
-        transactionHashes[_transactionID - 1] = hashTransactionState(_transaction);
+        transactionHashes[_transactionID - 1] = hashTransactionState(_transaction); // solhint-disable-line
 
         emit Payment(_transactionID, _amount, msg.sender);
         emit TransactionStateUpdated(_transactionID, _transaction);
@@ -180,7 +180,7 @@ contract MockEscrow is IArbitrable, IEvidence {
 
         _transaction.sender.send(_amountReimbursed);
         _transaction.amount -= _amountReimbursed;
-        transactionHashes[_transactionID - 1] = hashTransactionState(_transaction);
+        transactionHashes[_transactionID - 1] = hashTransactionState(_transaction); // solhint-disable-line
 
         emit Payment(_transactionID, _amountReimbursed, msg.sender);
         emit TransactionStateUpdated(_transactionID, _transaction);
@@ -201,7 +201,7 @@ contract MockEscrow is IArbitrable, IEvidence {
 
         _transaction.status = Status.Resolved;
 
-        transactionHashes[_transactionID - 1] = hashTransactionState(_transaction);
+        transactionHashes[_transactionID - 1] = hashTransactionState(_transaction); // solhint-disable-line
         emit TransactionStateUpdated(_transactionID, _transaction);
         emit TransactionResolved(_transactionID, Resolution.TransactionExecuted);
     }
@@ -284,7 +284,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         _transaction.senderFee = 0;
         _transaction.status = Status.Resolved;
 
-        transactionHashes[_transactionID - 1] = hashTransactionState(_transaction);
+        transactionHashes[_transactionID - 1] = hashTransactionState(_transaction); // solhint-disable-line
         emit TransactionStateUpdated(_transactionID, _transaction);
         emit TransactionResolved(_transactionID, Resolution.TimeoutBySender);
     }
@@ -307,7 +307,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         _transaction.receiverFee = 0;
         _transaction.status = Status.Resolved;
 
-        transactionHashes[_transactionID - 1] = hashTransactionState(_transaction);
+        transactionHashes[_transactionID - 1] = hashTransactionState(_transaction); // solhint-disable-line
         emit TransactionStateUpdated(_transactionID, _transaction);
         emit TransactionResolved(_transactionID, Resolution.TimeoutByReceiver);
     }
@@ -427,9 +427,9 @@ contract MockEscrow is IArbitrable, IEvidence {
         } else if (ruling == Party.Receiver) {
             _transaction.receiver.send(_transaction.receiverFee + _transaction.amount);
         } else {
-            uint256 split_amount = (_transaction.senderFee + _transaction.amount) / 2;
-            _transaction.sender.send(split_amount);
-            _transaction.receiver.send(split_amount);
+            uint256 splitAmount = (_transaction.senderFee + _transaction.amount) / 2;
+            _transaction.sender.send(splitAmount);
+            _transaction.receiver.send(splitAmount);
         }
 
         _transaction.amount = 0;
@@ -437,7 +437,7 @@ contract MockEscrow is IArbitrable, IEvidence {
         _transaction.receiverFee = 0;
         _transaction.status = Status.Resolved;
 
-        transactionHashes[_transactionID - 1] = hashTransactionState(_transaction);
+        transactionHashes[_transactionID - 1] = hashTransactionState(_transaction); // solhint-disable-line
         emit TransactionStateUpdated(_transactionID, _transaction);
         emit TransactionResolved(_transactionID, Resolution.RulingEnforced);
     }
