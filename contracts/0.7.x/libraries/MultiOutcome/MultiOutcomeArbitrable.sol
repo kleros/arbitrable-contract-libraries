@@ -211,6 +211,37 @@ library MultiOutcomeArbitrable {
         }
     }
 
+    /** @dev Validates and registers the ruling for a dispute. Can only be called by the arbitrator.
+     *  The purpose of this function is to ensure that the address calling it has the right to rule on the contract. The ruling is inverted if a ruling loses from lack of appeal fees funding.
+     *  @param _disputeID ID of the dispute in the Arbitrator contract.
+     *  @param _ruling Ruling given by the arbitrator. Note that 0 is reserved for "Refuse to arbitrate".
+     */
+    function processRuling(
+        ArbitrableStorage storage self, 
+        uint256 _disputeID, 
+        uint256 _ruling
+    ) internal returns(uint256 finalRuling) {
+        
+        uint256 itemID = self.disputeIDtoItemID[_disputeID];
+        ItemData storage item = self.items[itemID];
+
+        require(item.status == Status.Disputed, "Invalid dispute status.");
+        require(msg.sender == address(self.arbitrator), "The caller must be the arbitrator.");
+
+        Round storage round = item.rounds[item.rounds.length - 1];
+
+        // If only one ruling was fully funded, we assume that ruling to be the correct one.
+        if (round.rulingsFunded[0] == 0)
+            finalRuling = _ruling;
+        else
+            finalRuling = round.rulingsFunded[0];
+
+        item.status = Status.Resolved;
+        item.ruling = finalRuling;
+
+        emit Ruling(self.arbitrator, _disputeID, finalRuling);
+    }
+
     /** @dev Calculates the reward that the _beneficiary is entitled to at _round and clears the storage.
      *  Beware that this function does NOT check the status of the dispute and does NOT send the rewards to the _beneficiary. Use withdrawFeesAndRewards() for that purpose.
      *  @param _itemID The ID of the disputed item.
