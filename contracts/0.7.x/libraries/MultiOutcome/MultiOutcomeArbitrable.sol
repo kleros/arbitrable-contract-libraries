@@ -152,7 +152,7 @@ library MultiOutcomeArbitrable {
             emit Evidence(self.arbitrator, _evidenceGroupID, msg.sender, _evidence);
     }
 
-    /** @dev Takes up to the total amount required to fund a side of an appeal. Reimburses the rest. Creates an appeal if all sides are fully funded.
+    /** @dev Takes up to the total amount required to fund a side of an appeal. Reimburses the rest. Creates an appeal if two sides are fully funded.
      *  @param _itemID The ID of the disputed item.
      *  @param _ruling The ruling to which the contribution is made.
      */
