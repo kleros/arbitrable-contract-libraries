@@ -9,12 +9,13 @@ pragma solidity >=0.7;
 pragma experimental ABIEncoderV2;
 
 import "./BinaryArbitrable.sol";
+import "../.././interfaces/IAppealEvents.sol";
 import "@kleros/erc-792/contracts/IArbitrable.sol";
 import "@kleros/erc-792/contracts/IArbitrator.sol";
 import "@kleros/erc-792/contracts/erc-1497/IEvidence.sol";
 import "@kleros/ethereum-libraries/contracts/CappedMath.sol";
 
-contract MockEscrow is IArbitrable, IEvidence {
+contract MockEscrow is IArbitrable, IEvidence, IAppealEvents {
     
     using CappedMath for uint256;
     using BinaryArbitrable for BinaryArbitrable.ArbitrableStorage;
@@ -272,7 +273,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function timeOutBySender(uint256 _transactionID, Transaction memory _transaction) public onlyValidTransaction(_transactionID, _transaction) {
         require(_transaction.status == Status.WaitingReceiverFee, "The transaction is not waiting on the receiver.");
-        require(block.timestamp - _transaction.lastInteraction >= feeTimeout, "Timeout time has not passed yet.");
+        require(block.timestamp - _transaction.lastInteraction >= feeTimeout, "Timeout has not passed yet.");
 
         if (_transaction.receiverFee != 0) {
             _transaction.receiver.send(_transaction.receiverFee);
@@ -295,7 +296,7 @@ contract MockEscrow is IArbitrable, IEvidence {
      */
     function timeOutByReceiver(uint256 _transactionID, Transaction memory _transaction) public onlyValidTransaction(_transactionID, _transaction) {
         require(_transaction.status == Status.WaitingSenderFee, "The transaction is not waiting on the sender.");
-        require(block.timestamp - _transaction.lastInteraction >= feeTimeout, "Timeout time has not passed yet.");
+        require(block.timestamp - _transaction.lastInteraction >= feeTimeout, "Timeout has not passed yet.");
 
         if (_transaction.senderFee != 0) {
             _transaction.sender.send(_transaction.senderFee);

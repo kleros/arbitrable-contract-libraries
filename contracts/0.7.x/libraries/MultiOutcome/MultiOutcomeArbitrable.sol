@@ -123,7 +123,7 @@ library MultiOutcomeArbitrable {
     ) internal returns(uint256 disputeID) {
 
         ItemData storage item = self.items[_itemID];
-        require(item.status != Status.Undisputed, "Item already disputed.");
+        require(item.status == Status.Undisputed, "Item already disputed.");
         item.status = Status.Disputed;
         disputeID = self.arbitrator.createDispute{value: _arbitrationCost}(MAX_NO_OF_CHOICES, self.arbitratorExtraData);
         item.rounds.push();

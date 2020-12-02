@@ -58,20 +58,20 @@ library BinaryArbitrable {
 
     /** @dev To be emitted when the appeal fees of one of the parties are fully funded.
      *  @param _itemID The ID of the respective transaction.
-     *  @param _party The party that is fully funded.
+     *  @param _ruling The party that is fully funded.
      *  @param _round The appeal round fully funded by _party. Starts from 0.
      */
-    event HasPaidAppealFee(uint256 indexed _itemID, Party _party, uint256 _round);
+    event HasPaidAppealFee(uint256 indexed _itemID, uint256 _ruling, uint256 _round);
 
     /**
      *  @dev To be emitted when someone contributes to the appeal process.
      *  @param _itemID The ID of the respective transaction.
-     *  @param _party The party which received the contribution.
+     *  @param _ruling The party which received the contribution.
      *  @param _contributor The address of the contributor.
      *  @param _round The appeal round to which the contribution is going. Starts from 0.
      *  @param _amount The amount contributed.
      */
-    event AppealContribution(uint256 indexed _itemID, Party _party, address indexed _contributor, uint256 _round, uint256 _amount);
+    event AppealContribution(uint256 indexed _itemID, uint256 _ruling, address indexed _contributor, uint256 _round, uint256 _amount);
 
     // **************************** //
     // *    Modifying the state   * //
@@ -124,7 +124,7 @@ library BinaryArbitrable {
     ) internal returns(uint256 disputeID) {
 
         ItemData storage item = self.items[_itemID];
-        require(item.status != Status.Undisputed, "Item already disputed.");
+        require(item.status == Status.Undisputed, "Item already disputed.");
         item.status = Status.Disputed;
         disputeID = self.arbitrator.createDispute{value: _arbitrationCost}(AMOUNT_OF_CHOICES, self.arbitratorExtraData);
         item.rounds.push();
@@ -166,14 +166,16 @@ library BinaryArbitrable {
         require(block.timestamp >= appealPeriodStart && block.timestamp < appealPeriodEnd, "Not in appeal period.");
 
         uint256 multiplier;
-        uint256 winner = self.arbitrator.currentRuling(item.disputeID);
-        if (winner == uint256(_side)){
-            multiplier = self.winnerStakeMultiplier;
-        } else if (winner == 0){
-            multiplier = self.sharedStakeMultiplier;
-        } else {
-            require(block.timestamp < (appealPeriodEnd + appealPeriodStart)/2, "Not in loser's appeal period.");
-            multiplier = self.loserStakeMultiplier;
+        {
+            uint256 winner = self.arbitrator.currentRuling(item.disputeID);
+            if (winner == uint256(_side)){
+                multiplier = self.winnerStakeMultiplier;
+            } else if (winner == 0){
+                multiplier = self.sharedStakeMultiplier;
+            } else {
+                require(block.timestamp < (appealPeriodEnd + appealPeriodStart)/2, "Not in loser's appeal period.");
+                multiplier = self.loserStakeMultiplier;
+            }
         }
 
         Round storage round = item.rounds[item.rounds.length - 1];
@@ -188,14 +190,14 @@ library BinaryArbitrable {
         (contribution, remainingETH) = calculateContribution(msg.value, totalCost.subCap(round.paidFees[uint256(_side)]));
         round.contributions[msg.sender][uint256(_side)] += contribution;
         round.paidFees[uint256(_side)] += contribution;
-        emit AppealContribution(_itemID, _side, msg.sender, item.rounds.length - 1, contribution);
+        emit AppealContribution(_itemID, uint256(_side), msg.sender, item.rounds.length - 1, contribution);
 
         // Reimburse leftover ETH if any.
         if (remainingETH > 0)
             msg.sender.send(remainingETH); // Deliberate use of send in order to not block the contract in case of reverting fallback.
 
         if (round.paidFees[uint256(_side)] >= totalCost) {
-            emit HasPaidAppealFee(_itemID, _side, item.rounds.length - 1);
+            emit HasPaidAppealFee(_itemID, uint256(_side), item.rounds.length - 1);
             if (round.sideFunded == Party.None) {
                 round.sideFunded = _side;
             } else {
