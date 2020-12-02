@@ -39,23 +39,23 @@ Let's rewrite the [Escrow](https://developer.kleros.io/en/latest/implementing-an
 - let appeal funders withdraw their rewards in case they funded the winning side.
 - add getters to keep track of the appeal status of disputes.
 
-## Arbitration cycle
+### Arbitration cycle
 
 TODO.
 
-## Evidence
+### Evidence
 
 TODO.
 
-## Crowdfunded appeals
+### Crowdfunded appeals
 
 TODO.
 
-## Withdrawing of appeal rewards
+### Withdrawing of appeal rewards
 
 TODO.
 
-## Getters
+### Getters
 
 TODO.
 
