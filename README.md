@@ -36,7 +36,7 @@ Let's rewrite this [Escrow](https://developer.kleros.io/en/latest/implementing-a
 - handle the entire arbitration cycle.
 - let users submit evidence.
 - add support for appeals which can be crowdfunded.
-- let appeal funders withdraw their rewards in case they funded the winning side.
+- let appeal funders withdraw their rewards if they funded the winning side.
 - add getters to keep track of the appeal status of disputes.
 
 ### Arbitration cycle
@@ -51,7 +51,7 @@ TODO.
 
 TODO.
 
-### Withdrawing of appeal rewards
+### Withdrawal of appeal rewards
 
 TODO.
 
