@@ -32,7 +32,7 @@ There is not a single way to implement arbitrable contracts. For this reason, we
 
 # Implementing an appealable arbitrable contract
 
-Let's rewrite the [Escrow](https://developer.kleros.io/en/latest/implementing-an-arbitrable.html) contract using the [BinaryArbitrable](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/libraries/Binary/BinaryArbitrable.sol) library. We are going to see how to easily:
+Let's rewrite this [Escrow](https://developer.kleros.io/en/latest/implementing-an-arbitrable.html) contract using the [BinaryArbitrable](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/libraries/Binary/BinaryArbitrable.sol) library. We are going to see how to easily:
 - handle the entire arbitration cycle.
 - let users submit evidence.
 - add support for appeals which can be crowdfunded.
@@ -64,5 +64,3 @@ TODO.
 # Contribute
 
 TODO.
-
-# License
