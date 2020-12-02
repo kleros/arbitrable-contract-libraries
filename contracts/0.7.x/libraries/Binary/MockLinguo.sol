@@ -10,6 +10,7 @@
 pragma solidity >=0.7;
 
 import "./BinaryArbitrable.sol";
+import "../.././interfaces/IAppealEvents.sol";
 import "@kleros/erc-792/contracts/IArbitrable.sol";
 import "@kleros/erc-792/contracts/IArbitrator.sol";
 import "@kleros/erc-792/contracts/erc-1497/IEvidence.sol";
@@ -21,7 +22,7 @@ import "@kleros/ethereum-libraries/contracts/CappedMath.sol";
  *  @dev This contract trusts that the Arbitrator is honest and will not reenter or modify its costs during a call.
  *  The arbitrator must support appeal periods.
  */
-contract Linguo is IArbitrable, IEvidence {
+contract Linguo is IArbitrable, IEvidence, IAppealEvents {
     using CappedMath for uint256;
     using BinaryArbitrable for BinaryArbitrable.ArbitrableStorage;
 
