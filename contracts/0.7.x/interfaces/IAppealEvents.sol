@@ -8,13 +8,7 @@
 
 pragma solidity >=0.7;
 
-
-/**
- *  @title Interface that is implemented on resolve.kleros.io
- *  Sets a standard arbitrable contract implementation to provide a general purpose user interface.
- */
 interface IAppealEvents {
-
 
     /** @dev To be emitted when the appeal fees of one of the parties are fully funded.
      *  @param _itemID The ID of the respective transaction.
