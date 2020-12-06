@@ -11,7 +11,7 @@ use(solidity)
 
 const { BigNumber } = ethers
 
-describe('MultipleArbitrableTransactionWithAppeals contract', async () => {
+describe('MockEscrow contract', async () => {
   const arbitrationFee = 20
   const arbitratorExtraData = '0x85'
   const appealTimeout = 100
