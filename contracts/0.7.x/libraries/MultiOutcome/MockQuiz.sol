@@ -182,10 +182,11 @@ contract MockQuiz is IArbitrable, IEvidence, IAppealEvents {
      *  @param _answer The ID of the question.
      *  @param _evidence A link to evidence using its URI. Ignored if not provided.
      */
-    function challengeAnswer(uint256 _questionID, uint256 _answer, string calldata _evidence) external payable {
+    function challengeAnswer(uint256 _questionID, uint256 _answer, string calldata _evidence) external payable returns(uint256) {
         Question storage question = questions[_questionID];
         require(msg.sender == question.host, "Only the host can challenge");
-        require(question.status == Status.Answered, "Invalid status.");
+        // Status not checked on purpose, in order to test that createDispute(...) reverts if called twice with the same _questionID
+        // require(question.status == Status.Answered, "Invalid status.");
         require(block.timestamp - question.lastInteraction <= challengeTimeout, "The challenge phase has already passed.");
         require(_answer != 0, "0 is reserved for refuse to rule.");
 
@@ -195,10 +196,12 @@ contract MockQuiz is IArbitrable, IEvidence, IAppealEvents {
         question.status = Status.Challenged;
         question.hostAnswer = _answer;
 
-        arbitrableStorage.createDispute(_questionID, arbitrationCost, _questionID, _questionID);
+        uint256 disputeID = arbitrableStorage.createDispute(_questionID, arbitrationCost, _questionID, _questionID);
 
         emit QuestionChallenged(_questionID, _answer);
         arbitrableStorage.submitEvidence(_questionID, _questionID, _evidence);
+
+        return disputeID;
     }
 
     /** @dev Takes up to the total amount required to fund a side of an appeal. Reimburses the rest. Creates an appeal if two sides are fully funded.
