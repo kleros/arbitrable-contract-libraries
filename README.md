@@ -32,6 +32,8 @@ There is not a single way to implement arbitrable contracts. For this reason, we
 
 # Implementing an appealable arbitrable contract
 
+:warning: **WARNING:** Smart contracts in this tutorial are not intended for production but educational purposes. Beware of using them on main network.
+
 Let's rewrite this [Escrow](https://developer.kleros.io/en/latest/implementing-an-arbitrable.html) contract using the [BinaryArbitrable](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/libraries/Binary/BinaryArbitrable.sol) library. We are going to see how to easily:
 - handle the entire arbitration cycle.
 - let users submit evidence.
