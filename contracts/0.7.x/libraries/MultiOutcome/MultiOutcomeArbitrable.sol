@@ -20,10 +20,10 @@ library MultiOutcomeArbitrable {
     enum Status {Undisputed, Disputed, Resolved}
 
     struct Round {
-        uint256[] paidFees; // Tracks the fees paid by each side in this round.
+        mapping(uint256 => uint256) paidFees; // Tracks the fees paid by each ruling in this round.
         uint256[2] rulingsFunded; // Stores the ruling options that are fully funded.
         uint256 feeRewards; // Sum of reimbursable fees and stake rewards available to the parties that made contributions to the side that ultimately wins a dispute.
-        mapping(address => mapping(uint256 => uint256)) contributions; // Maps contributors to their contributions for each side.
+        mapping(address => mapping(uint256 => uint256)) contributions; // Maps contributors to their contributions for each ruling.
     }
 
     struct ItemData {
@@ -169,34 +169,39 @@ library MultiOutcomeArbitrable {
         require(block.timestamp >= appealPeriodStart && block.timestamp < appealPeriodEnd, "Not in appeal period.");
 
         uint256 multiplier;
-        uint256 winner = self.arbitrator.currentRuling(item.disputeID);
-        if (winner == _ruling){
-            multiplier = self.winnerStakeMultiplier;
-        } else if (winner == 0){
-            multiplier = self.sharedStakeMultiplier;
-        } else {
-            require(block.timestamp < (appealPeriodEnd + appealPeriodStart)/2, "Not in loser's appeal period.");
-            multiplier = self.loserStakeMultiplier;
+        {
+            // Scope needed to prevent "stack to deep" errors.
+            uint256 winner = self.arbitrator.currentRuling(item.disputeID);
+            if (winner == _ruling){
+                multiplier = self.winnerStakeMultiplier;
+            } else if (winner == 0){
+                multiplier = self.sharedStakeMultiplier;
+            } else {
+                require(block.timestamp < (appealPeriodEnd + appealPeriodStart)/2, "Not in loser's appeal period.");
+                multiplier = self.loserStakeMultiplier;
+            }
         }
-
+        
         Round storage round = item.rounds[item.rounds.length - 1];
         require(_ruling != round.rulingsFunded[0], "Appeal fee has already been paid.");
 
         uint256 appealCost = self.arbitrator.appealCost(item.disputeID, self.arbitratorExtraData);
         uint256 totalCost = appealCost.addCap((appealCost.mulCap(multiplier)) / MULTIPLIER_DIVISOR);
+        {
+            // Scope needed to prevent "stack to deep" errors.
+            // Take up to the amount necessary to fund the current round at the current costs.
+            uint256 contribution;
+            uint256 remainingETH;
+            (contribution, remainingETH) = calculateContribution(msg.value, totalCost.subCap(round.paidFees[_ruling]));
+            round.contributions[msg.sender][_ruling] += contribution;
+            round.paidFees[_ruling] += contribution;
+            emit AppealContribution(_itemID, _ruling, msg.sender, item.rounds.length - 1, contribution);
 
-        // Take up to the amount necessary to fund the current round at the current costs.
-        uint256 contribution;
-        uint256 remainingETH;
-        (contribution, remainingETH) = calculateContribution(msg.value, totalCost.subCap(round.paidFees[_ruling]));
-        round.contributions[msg.sender][_ruling] += contribution;
-        round.paidFees[_ruling] += contribution;
-        emit AppealContribution(_itemID, _ruling, msg.sender, item.rounds.length - 1, contribution);
-
-        // Reimburse leftover ETH if any.
-        if (remainingETH > 0)
-            msg.sender.send(remainingETH); // Deliberate use of send in order to not block the contract in case of reverting fallback.
-
+            // Reimburse leftover ETH if any.
+            if (remainingETH > 0)
+                msg.sender.send(remainingETH); // Deliberate use of send in order to not block the contract in case of reverting fallback.
+        }
+        
         if (round.paidFees[_ruling] >= totalCost) {
             emit HasPaidAppealFee(_itemID, _ruling, item.rounds.length - 1);
             if (round.rulingsFunded[0] == 0) {
@@ -265,7 +270,7 @@ library MultiOutcomeArbitrable {
 
         if (_round == lastRound || (round.rulingsFunded[0] != _ruling && round.rulingsFunded[1] != _ruling)) {
             // Allow to reimburse if funding was unsuccessful, i.e. appeal wasn't created or ruling wasn't fully funded.
-            // Notice that in practice jurors can vote for rulings that didn't fund the appeal. If this happens, Contributor to the winner ruling are only entitle to receive their contributions back.
+            // Notice that in practice jurors can vote for rulings that didn't fund the appeal. If this happens, contributors to the winner ruling are only entitle to receive their contributions back.
             reward = contributionTo[_ruling];
             contributionTo[_ruling] = 0;
         } else if (round.rulingsFunded[0] != item.ruling && round.rulingsFunded[1] != item.ruling) {
@@ -446,7 +451,7 @@ library MultiOutcomeArbitrable {
     /** @dev Gets the information on a round of a disputed item.
      *  @param _itemID The ID of the disputed item.
      *  @param _round The round to be queried.
-     *  @return paidFees sideFunded feeRewards appealed The round information.
+     *  @return paidFees rulingsFunded feeRewards appealed The round information.
      */
     function getRoundInfo(
         ArbitrableStorage storage self, 
