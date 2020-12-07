@@ -41,6 +41,8 @@ Let's rewrite this [Escrow](https://developer.kleros.io/en/latest/implementing-a
 - let appeal funders withdraw their rewards if they funded the winning side.
 - add getters to keep track of the appeal status of disputes.
 
+You can find the finished sample contract [here](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/libraries/Binary/SimpleEscrow.sol).
+
 ### Arbitration cycle
 
 In order to make the SimpleEscrow contract arbitrable we need to be able to (1) store and update data related to arbitration, such as the arbitrator address, the dispute ID or the dispute status, (2) create a dispute and (3) let the arbitrator enforce a ruling.
