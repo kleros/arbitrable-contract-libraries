@@ -48,7 +48,7 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
         arbitrableStorage.setArbitrator(_arbitrator, "");
         arbitrableStorage.setMultipliers(0, 0, 0);
 
-        emit MetaEvidence(META_EVIDENCE_ID, _agreement); // Agreement = MetaEvidence. It has information such as what ruling must the arbitrator give in order to make the payer or the payee the winner (in this case 1 and 2, respectively).
+        emit MetaEvidence(META_EVIDENCE_ID, _agreement); // Agreement = MetaEvidence. It has information such as what ruling the arbitrator must give in order to make the payer or the payee the winner (in this case 1 and 2, respectively).
     }
 
     function releaseFunds() public {
