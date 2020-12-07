@@ -20,7 +20,7 @@
 
 Create dispute. Wait for ruling. Appeal. Enforce final ruling. Make justice.
 
-Here you are going to find solidity libraries that help you create arbitrable contracts compliant with erc-792 and erc-1497 standards in a glimpse.  
+Here you are going to find solidity libraries that help you create arbitrable contracts compliant with ERC-792 and ERC-1497 standards in a glimpse.  
 
 # Getting started
 
@@ -79,9 +79,9 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
     uint256 public reclaimedAt;
 ```
 
-Notice that `arbitrator`, `numberOfRulingOptions` and `RulingOptions` are taken care of inside the library. We define the transaction ID (`TX_ID`) and the MetaEvidence ID (`META_EVIDENCE_ID`) as constants, because the contract only handles a single transaction.
+Notice that `arbitrator`, `numberOfRulingOptions` and `RulingOptions` are taken care of inside the library. We define the transaction ID (`TX_ID`) and the MetaEvidence ID (`META_EVIDENCE_ID`) as constants, because this contract only handles a single transaction.
 
-From now on, every time we interact with the arbitrator we will do so through `arbitrableStorage`. However, before we start doing so, `arbitrableStorage` needs to be set up:
+From now on, every time we interact with the arbitrator, we will do so through `arbitrableStorage`. As we will see, we won't have to worry about managing the dispute data. The library will manage it for us. However, before we start, `arbitrableStorage` needs to be set up:
 
 ```js
     constructor(
@@ -133,7 +133,7 @@ Let's adapt `reclaimFunds()` now:
     }
 ```
 
-We can access the dispute data of the transaction by reading its ItemData. This informations is stored in the items mapping by the id we have provided (`TX_ID`). Above we check that the transaction was not disputed. 
+We can access the dispute data of the transaction by reading its ItemData. This information is stored in the items mapping by the id we have provided (`TX_ID`). Above we check that the transaction was not disputed. 
 
 We are ready to create disputes now. If the `payer` reclaimed the funds, by sending the cost of arbitration to the contract, the `payee` can ask for arbitration: 
 
@@ -198,14 +198,14 @@ What you have to be aware of:
 - If you want to make it more costly/risky for a side to appeal, you can set the multipliers (in the constructor in this case).
 - If only one side is fully funded, then the appeal is not created and that side is considered the winner.
 - There can be as many appeal rounds as the arbitrator allows.
-- You don't have too worry about sanity check or sending overpaid fees back. The library takes care of this.
+- You don't have too worry about sanity checks or sending overpaid fees back. The library takes care of this.
 - `AppealContribution` and `HasPaidAppealFee` events are emitted. Check them out in `fundAppeal()` and in [IAppealEvents](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/interfaces/IAppealEvents.sol).
 - The arbitrator is only going to invoke `rule()` once the ruling is decisive, which means that all appeals are solved and it is not possible to continue appealing.
 - Funding appeals is profitable to winning parties and crowdfunders.
 
 ### Withdrawal of appeal rewards
 
-Crowdfunders who won are rewarded. How much they get will depend on the contribution made, the appeal cost, and the multipliers. If the arbitrator refuses tu rule, rewards are split equally and proportionally between crowfunders.
+Crowdfunders who won are rewarded. How much they get will depend on the contribution made, the appeal cost, and the multipliers. If the arbitrator refuses tu rule, rewards are split equally and proportionally among all crowfunders.
 
 In order to allow withdrawals we add the following:
 
@@ -215,7 +215,7 @@ In order to allow withdrawals we add the following:
     }
 ```
 
-Withdrawals are performed per crowdfunder and is their responsibility the claim the rewards. `_beneficiary` is the crowdfunder address and `_round` the appeal round they contributed to. For the sake of efficiency and simplicity, we also add a method to withdraw from many rounds at once:
+Withdrawals are performed per crowdfunder and is their responsibility to claim the rewards. `_beneficiary` is the crowdfunder address and `_round` the appeal round they contributed to. For the sake of efficiency and simplicity, we also provide a method to withdraw from many rounds at once:
 
 ```js
     function batchRoundWithdraw(address payable _beneficiary, uint256 _cursor, uint256 _count) external {
@@ -236,7 +236,7 @@ As stated in [BinaryArbitrable](https://github.com/kleros/appeal-utils/blob/main
 
 ### Getters
 
-We are almost done. Let's finish our Escrow contract by adding some useful getters to track the status of the dispute and the corresponding appeals:
+We are almost done! Let's finish our Escrow contract by adding some useful getters to track the status of the dispute and the corresponding appeals:
 
 ```js
     function getRoundInfo(uint256 _round) external view returns (
@@ -264,6 +264,7 @@ We are almost done. Let's finish our Escrow contract by adding some useful gette
     }
 ```
 
+And that’s it! We turned a very simple arbitrable escrow into a contract with complex arbitration features compliant with ERC-792 and ERC-1497.
 
 # Contribute
 
