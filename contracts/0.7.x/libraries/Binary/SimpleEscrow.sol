@@ -98,6 +98,15 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
         );
     }
 
+    function submitEvidence(string calldata _evidence) external {
+        require(msg.sender == payer || msg.sender == payee, "Invalid caller.");
+        arbitrableStorage.submitEvidence(TX_ID, TX_ID, _evidence);
+    }
+
+    function fundAppeal(BinaryArbitrable.Party _side) external payable {
+        arbitrableStorage.fundAppeal(TX_ID, _side);
+    } 
+
     function rule(uint256 _disputeID, uint256 _ruling) public override {
         BinaryArbitrable.Party _finalRuling = arbitrableStorage.processRuling(_disputeID, _ruling);
 
@@ -105,6 +114,14 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
         else if (_finalRuling == BinaryArbitrable.Party.Respondent) payee.send(address(this).balance);
 
         status = Status.Resolved;
+    }
+
+    function withdrawFeesAndRewards(address payable _beneficiary, uint256 _round) external {
+        arbitrableStorage.withdrawFeesAndRewards(TX_ID, _beneficiary, _round);
+    }
+    
+    function batchRoundWithdraw(address payable _beneficiary, uint256 _cursor, uint256 _count) external {
+        arbitrableStorage.withdrawRoundBatch(TX_ID, _beneficiary, _cursor, _count);
     }
 
     function remainingTimeToReclaim() public view returns (uint256) {
@@ -124,5 +141,33 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
             (block.timestamp - reclaimedAt) > arbitrationFeeDepositPeriod
                 ? 0
                 : (reclaimedAt + arbitrationFeeDepositPeriod - block.timestamp);
+    }
+
+    // **************************** //
+    // *         getters          * //
+    // **************************** //
+
+    function getRoundInfo(uint256 _round) external view returns (
+            uint256[3] memory paidFees,
+            BinaryArbitrable.Party sideFunded,
+            uint256 feeRewards,
+            bool appealed
+        ) {
+        return arbitrableStorage.getRoundInfo(TX_ID, _round);
+    }
+
+    function getNumberOfRounds() external view returns (uint256) {
+        return arbitrableStorage.getNumberOfRounds(TX_ID);
+    }
+
+    function getContributions(
+        uint256 _round,
+        address _contributor
+    ) external view returns(uint256[3] memory contributions) {
+        return arbitrableStorage.getContributions(TX_ID, _round, _contributor);
+    }
+
+    function amountWithdrawable(address _beneficiary) external view returns (uint256 total) {
+        total = arbitrableStorage.amountWithdrawable(TX_ID, _beneficiary);
     }
 }

@@ -148,7 +148,9 @@ We are ready to create disputes now. If the `payer` reclaimed the funds, by send
     }
 ```
 
-Lastly, we need to adapt `rule()` in order to let the arbitrator enforce a ruling.
+While creating the dispute, the library will update all necesary information and emit the `Dispute` event as defined in the ERC-792 standard.
+
+Lastly, we need to update `rule()` in order to let the arbitrator enforce a ruling.
 
 ```js
     function rule(uint256 _disputeID, uint256 _ruling) public override {
@@ -165,22 +167,111 @@ All the important sanity checks and the emission of the `Ruling` event is done i
 
 ### Evidence
 
-TODO.
+In many cases, it is very important that parties in dispute are allowed to defend their positions by providing evidence to the jurors. We can add this feature with a few lines of code:
+
+```js
+    function submitEvidence(string calldata _evidence) external {
+        require(msg.sender == payer || msg.sender == payee, "Invalid caller.");
+        arbitrableStorage.submitEvidence(TX_ID, TX_ID, _evidence);
+    }
+```
+
+For our use case, we restrict the submission of evidence to the parties involved (payer and payee) and we let the library do the rest. The `Evidence` event is going to be emitted, which will make the evidence visible to the arbitrator. It is assumed that evidence can only be submitted until the dispute is resolved.
 
 ### Crowdfunded appeals
 
-TODO.
+One thing you might be wondering is what happens if the ruling given by the arbitrator does not feel right. At Kleros, we believe that allowing rulings to be appealable is an important feature that increases arbitration quality and makes it more robust against attacks. 
+
+If you decide to use an appealable arbitrator, you can easily add the appeal feature with a function like the following:
+
+```js
+    function fundAppeal(BinaryArbitrable.Party _side) external payable {
+        arbitrableStorage.fundAppeal(TX_ID, _side);
+    } 
+```
+
+What you have to be aware of:
+- The appeal is created only if both sides fund it.
+- The appeal can be crowdfunded, i.e. **anyone** can call `fundAppeal()` during the appeal period.
+- If you want to make it more costly/risky for a side to appeal, you can set the multipliers (in the constructor in this case).
+- If only one side is fully funded, then the appeal is not created and that side is considered the winner.
+- There can be as many appeal rounds as the arbitrator allows.
+- You don't have too worry about sanity check or sending overpaid fees back. The library takes care of this.
+- `AppealContribution` and `HasPaidAppealFee` events are emitted. Check them out in `fundAppeal()` and in [IAppealEvents](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/interfaces/IAppealEvents.sol).
+- The arbitrator is only going to invoke `rule()` once the ruling is decisive, which means that all appeals are solved and it is not possible to continue appealing.
+- Funding appeals is profitable to winning parties and crowdfunders.
 
 ### Withdrawal of appeal rewards
 
-TODO.
+Crowdfunders who won are rewarded. How much they get will depend on the contribution made, the appeal cost, and the multipliers. If the arbitrator refuses tu rule, rewards are split equally and proportionally between crowfunders.
+
+In order to allow withdrawals we add the following:
+
+```js
+    function withdrawFeesAndRewards(address payable _beneficiary, uint256 _round) external {
+        arbitrableStorage.withdrawFeesAndRewards(TX_ID, _beneficiary, _round);
+    }
+```
+
+Withdrawals are performed per crowdfunder and is their responsibility the claim the rewards. `_beneficiary` is the crowdfunder address and `_round` the appeal round they contributed to. For the sake of efficiency and simplicity, we also add a method to withdraw from many rounds at once:
+
+```js
+    function batchRoundWithdraw(address payable _beneficiary, uint256 _cursor, uint256 _count) external {
+        arbitrableStorage.withdrawRoundBatch(TX_ID, _beneficiary, _cursor, _count);
+    }
+```
+
+As stated in [BinaryArbitrable](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/libraries/Binary/BinaryArbitrable.sol):
+
+```js
+ /**
+  *  ...
+  *  @param _cursor The round from where to start withdrawing.
+  *  @param _count The number of rounds to iterate. If set to 0 or a value larger than the number of rounds, iterates until the last round.
+  */
+```
+
 
 ### Getters
 
-TODO.
+We are almost done. Let's finish our Escrow contract by adding some useful getters to track the status of the dispute and the corresponding appeals:
 
+```js
+    function getRoundInfo(uint256 _round) external view returns (
+            uint256[3] memory paidFees,
+            BinaryArbitrable.Party sideFunded,
+            uint256 feeRewards,
+            bool appealed
+        ) {
+        return arbitrableStorage.getRoundInfo(TX_ID, _round);
+    }
+
+    function getNumberOfRounds() external view returns (uint256) {
+        return arbitrableStorage.getNumberOfRounds(TX_ID);
+    }
+
+    function getContributions(
+        uint256 _round,
+        address _contributor
+    ) external view returns(uint256[3] memory contributions) {
+        return arbitrableStorage.getContributions(TX_ID, _round, _contributor);
+    }
+
+    function amountWithdrawable(address _beneficiary) external view returns (uint256 total) {
+        total = arbitrableStorage.amountWithdrawable(TX_ID, _beneficiary);
+    }
+```
 
 
 # Contribute
 
-TODO.
+Check out the [kleros gitbook](https://klerosio.gitbook.io/contributing-md/code-style-and-guidelines/solidity).
+
+## Test
+
+Run the following commands:
+
+```sh
+npm install
+npx hardhat test
+```
