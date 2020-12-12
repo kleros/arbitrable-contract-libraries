@@ -31,7 +31,7 @@ library BinaryArbitrable {
     struct ItemData {
         Round[] rounds;
         Status status;
-        uint256 ruling; // Gas saving opportunity
+        uint248 ruling;
         uint256 disputeID;
     }
 
@@ -213,7 +213,7 @@ library BinaryArbitrable {
             finalRuling = round.rulingFunded;
 
         item.status = Status.Resolved;
-        item.ruling = finalRuling;
+        item.ruling = uint248(finalRuling);
 
         emit Ruling(self.arbitrator, _disputeID, finalRuling);
     }
@@ -395,7 +395,7 @@ library BinaryArbitrable {
     function getFinalRuling(ArbitrableStorage storage self, uint256 _itemID) internal view returns(uint256) {
         ItemData storage item = self.items[_itemID];
         require(item.status == Status.Resolved, "Arbitrator has not ruled yet.");
-        return item.ruling;
+        return uint256(item.ruling);
     }
 
     /** @dev Gets the cost of arbitration using the given arbitrator and arbitratorExtraData.
