@@ -255,7 +255,8 @@ library BinaryArbitrable {
         contributionTo[PARTY_B] = 0;
 
         // The beneficiary doesn't withdraw fees and rewards from a particular ruling but from any. Therefore, the 'ruling' field of Withdrawal is left undefined (0).
-        emit Withdrawal(_itemID, _round, 0, _beneficiary, reward);
+        if (reward > 0)
+            emit Withdrawal(_itemID, _round, 0, _beneficiary, reward);
     }
 
     /** @dev Withdraws contributions of appeal rounds. Reimburses contributions if the appeal was not fully funded. 
