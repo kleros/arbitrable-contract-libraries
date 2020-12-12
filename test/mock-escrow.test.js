@@ -1477,12 +1477,12 @@ describe('MockEscrow contract', async () => {
 
       // Batch-withdraw (checking if _cursor and _count arguments are working as expected).
       const balancesBefore = await getBalances()
-      const amountWithdrawable1 = await contract.amountWithdrawable(
+      const withdrawableAmount1 = await contract.withdrawableAmount(
         transactionId,
         ruleTransaction,
         await crowdfunder1.getAddress()
       )
-      const amountWithdrawable2 = await contract.amountWithdrawable(
+      const withdrawableAmount2 = await contract.withdrawableAmount(
         transactionId,
         ruleTransaction,
         await crowdfunder2.getAddress()
@@ -1521,7 +1521,7 @@ describe('MockEscrow contract', async () => {
 
       const balancesAfter = await getBalances()
 
-      expect(amountWithdrawable1).to.equal(
+      expect(withdrawableAmount1).to.equal(
         BigNumber.from(0),
         'Wrong amount withdrawable'
       )
@@ -1548,7 +1548,7 @@ describe('MockEscrow contract', async () => {
         'Contributor was not rewarded correctly'
       )
 
-      expect(amountWithdrawable2).to.equal(
+      expect(withdrawableAmount2).to.equal(
         BigNumber.from(totalReward),
         'Wrong withdrawable amount'
       )
