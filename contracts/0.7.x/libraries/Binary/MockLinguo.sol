@@ -359,15 +359,12 @@ contract Linguo is IArbitrable, IEvidence, IAppealEvents {
         arbitrableStorage.submitEvidence(_taskID, _taskID, _evidence);
     }
 
-    /** @dev Takes up to the total amount required to fund a side of an appeal. Reimburses the rest. Creates an appeal if all sides are fully funded.
+    /** @dev Takes up to the total amount required to fund a party of an appeal. Reimburses the rest. Creates an appeal if both parties are fully funded.
      *  @param _taskID The ID of challenged task.
-     *  @param _side The party that pays the appeal fee.
+     *  @param _ruling The party that pays the appeal fee.
      */
-    function fundAppeal(uint256 _taskID, Party _side) external payable {
-        arbitrableStorage.fundAppeal(
-            _taskID,
-            BinaryArbitrable.Party(uint256(_side))
-        );
+    function fundAppeal(uint256 _taskID, uint256 _ruling) external payable {
+        arbitrableStorage.fundAppeal(_taskID, _ruling);
     }
 
     /** @dev Withdraws contributions of appeal rounds. Reimburses contributions if no disputes were raised. If a dispute was raised, sends the fee stake rewards and reimbursements proportional to the contributions made to the winner of a dispute.
@@ -389,13 +386,13 @@ contract Linguo is IArbitrable, IEvidence, IAppealEvents {
      *  @param _cursor The round from where to start withdrawing.
      *  @param _count The number of rounds to iterate. If set to 0 or a value larger than the number of rounds, iterates until the last round.
      */
-    function batchRoundWithdraw(
+    function batchWithdrawFeesAndRewards(
         address payable _beneficiary,
         uint256 _taskID,
         uint256 _cursor,
         uint256 _count
     ) public {
-        arbitrableStorage.withdrawRoundBatch(_taskID, _beneficiary, _cursor, _count);
+        arbitrableStorage.batchWithdrawFeesAndRewards(_taskID, _beneficiary, _cursor, _count);
     }
 
     /** @dev Gives the ruling for a dispute. Can only be called by the arbitrator.
@@ -404,9 +401,7 @@ contract Linguo is IArbitrable, IEvidence, IAppealEvents {
      *  @param _ruling Ruling given by the arbitrator. Note that 0 is reserved for "Refuse to arbitrate".
      */
     function rule(uint256 _disputeID, uint256 _ruling) external override {
-        Party finalRuling = Party(uint256(
-            arbitrableStorage.processRuling(_disputeID, _ruling)
-        ));
+        Party finalRuling = Party(arbitrableStorage.processRuling(_disputeID, _ruling));
         executeRuling(_disputeID, finalRuling);
     }
 
@@ -456,8 +451,8 @@ contract Linguo is IArbitrable, IEvidence, IAppealEvents {
      *  @param _beneficiary The contributor for which to query.
      *  @return total The total amount of wei available to withdraw.
      */
-    function amountWithdrawable(uint256 _taskID, address payable _beneficiary) external view returns (uint256 total) {
-        total = arbitrableStorage.amountWithdrawable(_taskID, _beneficiary);
+    function withdrawableAmount(uint256 _taskID, address payable _beneficiary) external view returns (uint256 total) {
+        total = arbitrableStorage.withdrawableAmount(_taskID, _beneficiary);
     }
 
     /** @dev Gets the deposit required for self-assigning the task.
@@ -548,14 +543,14 @@ contract Linguo is IArbitrable, IEvidence, IAppealEvents {
     /** @dev Gets the information on a round of a task.
      *  @param _taskID The ID of the task.
      *  @param _round The round to be queried.
-     *  @return paidFees sideFunded feeRewards appealed The round information.
+     *  @return paidFees rulingFunded feeRewards appealed The round information.
      */
     function getRoundInfo(uint256 _taskID, uint256 _round)
         public
         view
         returns (
             uint256[3] memory paidFees,
-            BinaryArbitrable.Party sideFunded,
+            uint256 rulingFunded,
             uint256 feeRewards,
             bool appealed
         )

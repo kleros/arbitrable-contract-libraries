@@ -30,6 +30,7 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
     uint256 public constant reclamationPeriod = 3 minutes;
     uint256 public constant arbitrationFeeDepositPeriod = 3 minutes;
 
+    enum RulingOptions {RefusedToArbitrate, PayerWins, PayeeWins}
     enum Status {Initial, Reclaimed, Resolved}
     Status public status;
 
@@ -63,7 +64,7 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
 
     function reclaimFunds() public payable {
         BinaryArbitrable.Status disputeStatus = arbitrableStorage.items[TX_ID].status;
-        require(disputeStatus == BinaryArbitrable.Status.Undisputed, "Dispute has already been created.");
+        require(disputeStatus == BinaryArbitrable.Status.None, "Dispute has already been created.");
         require(status != Status.Resolved, "Transaction is already resolved.");
         require(msg.sender == payer, "Only the payer can reclaim the funds.");
 
@@ -103,15 +104,15 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
         arbitrableStorage.submitEvidence(TX_ID, TX_ID, _evidence);
     }
 
-    function fundAppeal(BinaryArbitrable.Party _side) external payable {
-        arbitrableStorage.fundAppeal(TX_ID, _side);
+    function fundAppeal(uint256 _ruling) external payable {
+        arbitrableStorage.fundAppeal(TX_ID, _ruling);
     } 
 
     function rule(uint256 _disputeID, uint256 _ruling) public override {
-        BinaryArbitrable.Party _finalRuling = arbitrableStorage.processRuling(_disputeID, _ruling);
+        RulingOptions _finalRuling = RulingOptions(arbitrableStorage.processRuling(_disputeID, _ruling));
 
-        if (_finalRuling == BinaryArbitrable.Party.Requester) payer.send(address(this).balance);
-        else if (_finalRuling == BinaryArbitrable.Party.Respondent) payee.send(address(this).balance);
+        if (_finalRuling == RulingOptions.PayerWins) payer.send(address(this).balance);
+        else if (_finalRuling == RulingOptions.PayeeWins) payee.send(address(this).balance);
 
         status = Status.Resolved;
     }
@@ -120,8 +121,8 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
         arbitrableStorage.withdrawFeesAndRewards(TX_ID, _beneficiary, _round);
     }
     
-    function batchRoundWithdraw(address payable _beneficiary, uint256 _cursor, uint256 _count) external {
-        arbitrableStorage.withdrawRoundBatch(TX_ID, _beneficiary, _cursor, _count);
+    function batchWithdrawFeesAndRewards(address payable _beneficiary, uint256 _cursor, uint256 _count) external {
+        arbitrableStorage.batchWithdrawFeesAndRewards(TX_ID, _beneficiary, _cursor, _count);
     }
 
     function remainingTimeToReclaim() public view returns (uint256) {
@@ -135,7 +136,7 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
     function remainingTimeToDepositArbitrationFee() public view returns (uint256) {
         require(status == Status.Reclaimed, "Transaction is not in Reclaimed state.");
         BinaryArbitrable.Status disputeStatus = arbitrableStorage.items[TX_ID].status;
-        require(disputeStatus == BinaryArbitrable.Status.Undisputed, "Dispute has already been created.");
+        require(disputeStatus == BinaryArbitrable.Status.None, "Dispute has already been created.");
 
         return
             (block.timestamp - reclaimedAt) > arbitrationFeeDepositPeriod
@@ -149,7 +150,7 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
 
     function getRoundInfo(uint256 _round) external view returns (
             uint256[3] memory paidFees,
-            BinaryArbitrable.Party sideFunded,
+            uint256 rulingFunded,
             uint256 feeRewards,
             bool appealed
         ) {
@@ -167,7 +168,7 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
         return arbitrableStorage.getContributions(TX_ID, _round, _contributor);
     }
 
-    function amountWithdrawable(address _beneficiary) external view returns (uint256 total) {
-        total = arbitrableStorage.amountWithdrawable(TX_ID, _beneficiary);
+    function withdrawableAmount(address _beneficiary) external view returns (uint256 total) {
+        total = arbitrableStorage.withdrawableAmount(TX_ID, _beneficiary);
     }
 }

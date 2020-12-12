@@ -155,7 +155,7 @@ contract MockEscrow is IArbitrable, IEvidence, IAppealEvents {
     function pay(uint256 _transactionID, Transaction memory _transaction, uint256 _amount) public onlyValidTransaction(_transactionID, _transaction) {
         require(_transaction.sender == msg.sender, "The caller must be the sender.");
         BinaryArbitrable.Status status = arbitrableStorage.items[_transactionID].status;
-        require(status == BinaryArbitrable.Status.Undisputed, "Dispute has already been created.");
+        require(status == BinaryArbitrable.Status.None, "Dispute has already been created.");
         require(_transaction.status == Status.Ongoing, "The transaction must not be disputed/executed.");
         require(_amount <= _transaction.amount, "Maximum amount available for payment exceeded.");
 
@@ -175,7 +175,7 @@ contract MockEscrow is IArbitrable, IEvidence, IAppealEvents {
     function reimburse(uint256 _transactionID, Transaction memory _transaction, uint256 _amountReimbursed) public onlyValidTransaction(_transactionID, _transaction) {
         require(_transaction.receiver == msg.sender, "The caller must be the receiver.");
         BinaryArbitrable.Status status = arbitrableStorage.items[_transactionID].status;
-        require(status == BinaryArbitrable.Status.Undisputed, "Dispute has already been created.");
+        require(status == BinaryArbitrable.Status.None, "Dispute has already been created.");
         require(_transaction.status == Status.Ongoing, "The transaction must not be disputed/executed.");
         require(_amountReimbursed <= _transaction.amount, "Maximum reimbursement available exceeded.");
 
@@ -194,7 +194,7 @@ contract MockEscrow is IArbitrable, IEvidence, IAppealEvents {
     function executeTransaction(uint256 _transactionID, Transaction memory _transaction) public onlyValidTransaction(_transactionID, _transaction) {
         require(block.timestamp >= _transaction.deadline, "Deadline not passed.");
         BinaryArbitrable.Status status = arbitrableStorage.items[_transactionID].status;
-        require(status == BinaryArbitrable.Status.Undisputed, "Dispute has already been created.");
+        require(status == BinaryArbitrable.Status.None, "Dispute has already been created.");
         require(_transaction.status == Status.Ongoing, "The transaction must not be disputed/executed.");
 
         _transaction.receiver.send(_transaction.amount);
@@ -215,7 +215,7 @@ contract MockEscrow is IArbitrable, IEvidence, IAppealEvents {
      */
     function payArbitrationFeeBySender(uint256 _transactionID, Transaction memory _transaction) public payable onlyValidTransaction(_transactionID, _transaction) {
         BinaryArbitrable.Status status = arbitrableStorage.items[_transactionID].status;
-        require(status == BinaryArbitrable.Status.Undisputed, "Dispute has already been created.");
+        require(status == BinaryArbitrable.Status.None, "Dispute has already been created.");
         require(_transaction.status < Status.Resolved, "The transaction must not be executed.");
         require(msg.sender == _transaction.sender, "The caller must be the sender.");
 
@@ -245,7 +245,7 @@ contract MockEscrow is IArbitrable, IEvidence, IAppealEvents {
      */
     function payArbitrationFeeByReceiver(uint256 _transactionID, Transaction memory _transaction) public payable onlyValidTransaction(_transactionID, _transaction) {
         BinaryArbitrable.Status status = arbitrableStorage.items[_transactionID].status;
-        require(status == BinaryArbitrable.Status.Undisputed, "Dispute has already been created.");
+        require(status == BinaryArbitrable.Status.None, "Dispute has already been created.");
         require(_transaction.status < Status.Resolved, "The transaction must not be executed.");
         require(msg.sender == _transaction.receiver, "The caller must be the receiver.");
         
@@ -358,16 +358,13 @@ contract MockEscrow is IArbitrable, IEvidence, IAppealEvents {
         arbitrableStorage.submitEvidence(_transactionID, _transactionID, _evidence);
     }
 
-    /** @dev Takes up to the total amount required to fund a side of an appeal. Reimburses the rest. Creates an appeal if both sides are fully funded.
+    /** @dev Takes up to the total amount required to fund a party of an appeal. Reimburses the rest. Creates an appeal if both parties are fully funded.
      *  @param _transactionID The ID of the disputed transaction.
      *  @param _transaction The transaction state.
-     *  @param _side The party that pays the appeal fee.
+     *  @param _ruling The party that pays the appeal fee.
      */
-    function fundAppeal(uint256 _transactionID, Transaction calldata _transaction, Party _side) external payable onlyValidTransaction(_transactionID, _transaction) {
-        arbitrableStorage.fundAppeal(
-            _transactionID,
-            BinaryArbitrable.Party(uint256(_side))
-        );
+    function fundAppeal(uint256 _transactionID, Transaction calldata _transaction, uint256 _ruling) external payable onlyValidTransaction(_transactionID, _transaction) {
+        arbitrableStorage.fundAppeal(_transactionID, _ruling);
     } 
     
     /** @dev Witdraws contributions of appeal rounds. Reimburses contributions if the appeal was not fully funded. 
@@ -394,14 +391,14 @@ contract MockEscrow is IArbitrable, IEvidence, IAppealEvents {
      *  @param _cursor The round from where to start withdrawing.
      *  @param _count The number of rounds to iterate. If set to 0 or a value larger than the number of rounds, iterates until the last round.
      */
-    function batchRoundWithdraw(
+    function batchWithdrawFeesAndRewards(
         address payable _beneficiary, 
         uint256 _transactionID, 
         Transaction calldata _transaction, 
         uint256 _cursor, 
         uint256 _count
     ) public onlyValidTransaction(_transactionID, _transaction) {
-        arbitrableStorage.withdrawRoundBatch(_transactionID, _beneficiary, _cursor, _count);
+        arbitrableStorage.batchWithdrawFeesAndRewards(_transactionID, _beneficiary, _cursor, _count);
     }
 
     /** @dev Give a ruling for a dispute. Must be called by the arbitrator to enforce the final ruling.
@@ -419,7 +416,7 @@ contract MockEscrow is IArbitrable, IEvidence, IAppealEvents {
      */
     function executeRuling(uint256 _transactionID, Transaction memory _transaction) public onlyValidTransaction(_transactionID, _transaction) {
 
-        Party ruling = Party(uint256(arbitrableStorage.getFinalRuling(_transactionID)));
+        Party ruling = Party(arbitrableStorage.getFinalRuling(_transactionID));
 
         // Give the arbitration fee back.
         // Note that we use send to prevent a party from blocking the execution.
@@ -454,12 +451,12 @@ contract MockEscrow is IArbitrable, IEvidence, IAppealEvents {
      *  @param _beneficiary The contributor for which to query.
      *  @return total The total amount of wei available to withdraw.
      */
-    function amountWithdrawable(
+    function withdrawableAmount(
         uint256 _transactionID, 
         Transaction calldata _transaction, 
         address _beneficiary
     ) public view onlyValidTransaction(_transactionID, _transaction) returns (uint256 total) {
-        total = arbitrableStorage.amountWithdrawable(_transactionID, _beneficiary);
+        total = arbitrableStorage.withdrawableAmount(_transactionID, _beneficiary);
     }
 
     /** @dev Getter to know the count of transactions.
@@ -494,14 +491,14 @@ contract MockEscrow is IArbitrable, IEvidence, IAppealEvents {
     /** @dev Gets the information on a round of a transaction.
      *  @param _transactionID The ID of the transaction.
      *  @param _round The round to query.
-     *  @return paidFees sideFunded feeRewards appealed The round information.
+     *  @return paidFees rulingFunded feeRewards appealed The round information.
      */
     function getRoundInfo(uint256 _transactionID, uint256 _round)
         public
         view
         returns (
             uint256[3] memory paidFees,
-            BinaryArbitrable.Party sideFunded,
+            uint256 rulingFunded,
             uint256 feeRewards,
             bool appealed
         )
