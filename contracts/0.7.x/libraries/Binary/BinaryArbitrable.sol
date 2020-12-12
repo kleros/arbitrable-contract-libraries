@@ -218,47 +218,6 @@ library BinaryArbitrable {
         emit Ruling(self.arbitrator, _disputeID, finalRuling);
     }
 
-    /** @dev Calculates the reward that the _beneficiary is entitled to at _round and registers the withdrawal.
-     *  Beware that this function does NOT check the status of the dispute and does NOT send the rewards to the _beneficiary. Use withdrawFeesAndRewards() for that purpose.
-     *  @param _itemID The ID of the disputed item.
-     *  @param _beneficiary The address that made contributions.
-     *  @param _round The round from which to withdraw.
-     *  @return reward The reward value that was withdrawn and can be sent to the _beneficiary.
-     */
-    function _registerWithdrawal(
-        ArbitrableStorage storage self, 
-        uint256 _itemID, 
-        address _beneficiary, 
-        uint256 _round
-    ) internal returns(uint256 reward) {
-
-        ItemData storage item = self.items[_itemID];
-        Round storage round = item.rounds[_round];
-        uint256[3] storage contributionTo = round.contributions[_beneficiary];
-        uint256 lastRound = item.rounds.length - 1;
-
-        if (_round == lastRound) {
-            // Allow to reimburse if funding was unsuccessful.
-            reward = contributionTo[PARTY_A] + contributionTo[PARTY_B];
-        } else if (item.ruling == 0) {
-            // Reimburse unspent fees proportionally if there is no winner and loser.
-            uint256 totalFeesPaid = round.paidFees[PARTY_A] + round.paidFees[PARTY_B];
-            uint256 totalBeneficiaryContributions = contributionTo[PARTY_A] + contributionTo[PARTY_B];
-            reward = totalFeesPaid > 0 ? (totalBeneficiaryContributions * round.feeRewards) / totalFeesPaid : 0;
-        } else {
-            // Reward the winner.
-            reward = round.paidFees[item.ruling] > 0
-                ? (contributionTo[item.ruling] * round.feeRewards) / round.paidFees[item.ruling]
-                : 0;
-        }
-        contributionTo[PARTY_A] = 0;
-        contributionTo[PARTY_B] = 0;
-
-        // The beneficiary doesn't withdraw fees and rewards from a particular ruling but from any. Therefore, the 'ruling' field of Withdrawal is left undefined (0).
-        if (reward > 0)
-            emit Withdrawal(_itemID, _round, 0, _beneficiary, reward);
-    }
-
     /** @dev Withdraws contributions of appeal rounds. Reimburses contributions if the appeal was not fully funded. 
      *  If the appeal was fully funded, sends the fee stake rewards and reimbursements proportional to the contributions made to the winner of a dispute.
      *  @param _itemID The ID of the disputed item.
@@ -271,9 +230,19 @@ library BinaryArbitrable {
         address payable _beneficiary, 
         uint256 _round
     ) internal {
-        require(self.items[_itemID].status == Status.Resolved, "Dispute not resolved.");
-        uint256 reward = _registerWithdrawal(self, _itemID, _beneficiary, _round);
-        _beneficiary.send(reward); // It is the user responsibility to accept ETH.
+        ItemData storage item = self.items[_itemID];
+        require(item.status == Status.Resolved, "Dispute not resolved.");
+        uint256 reward = getWithdrawableAmount(self, _itemID, _beneficiary, _round);
+
+        uint256[3] storage contributionTo = item.rounds[_round].contributions[_beneficiary];
+        contributionTo[PARTY_A] = 0;
+        contributionTo[PARTY_B] = 0;
+
+        // The beneficiary doesn't withdraw fees and rewards from a particular ruling but from any. Therefore, the 'ruling' field of Withdrawal is left undefined (0).
+        if (reward > 0) {
+            emit Withdrawal(_itemID, _round, 0, _beneficiary, reward);
+            _beneficiary.send(reward); // It is the user responsibility to accept ETH.
+        }
     }
     
     /** @dev Withdraws contributions of multiple appeal rounds at once. This function is O(n) where n is the number of rounds. 
@@ -290,7 +259,6 @@ library BinaryArbitrable {
         uint256 _cursor, 
         uint256 _count
     ) internal {
-
         ItemData storage item = self.items[_itemID];
         require(item.status == Status.Resolved, "Dispute not resolved.");
 
@@ -298,8 +266,18 @@ library BinaryArbitrable {
         if (maxRound > item.rounds.length)
             maxRound = item.rounds.length;
         uint256 reward;
-        for (uint256 i = _cursor; i < maxRound; i++)
-            reward += _registerWithdrawal(self, _itemID, _beneficiary, i);
+        for (uint256 i = _cursor; i < maxRound; i++) {
+            uint256 roundReward = getWithdrawableAmount(self, _itemID, _beneficiary, i);
+            reward += roundReward;
+
+            uint256[3] storage contributionTo = item.rounds[i].contributions[_beneficiary];
+            contributionTo[PARTY_A] = 0;
+            contributionTo[PARTY_B] = 0;
+
+            // The beneficiary doesn't withdraw fees and rewards from a particular ruling but from any. Therefore, the 'ruling' field of Withdrawal is left undefined (0).
+            if (roundReward > 0)
+                emit Withdrawal(_itemID, i, 0, _beneficiary, roundReward);
+        }
 
         _beneficiary.send(reward); // It is the user responsibility to accept ETH.
     }
@@ -308,36 +286,38 @@ library BinaryArbitrable {
     // *      Getters     * //
     // ******************** //
 
-    /** @dev Gets the rewards withdrawable for a given ruling taken into account all rounds. 
-     *  This function is O(n) where n is the number of rounds. 
-     *  This could exceed the gas limit, therefore this function should be used only as a utility and not be relied upon by other contracts.
+    /** @dev Gets the rewards withdrawable for a given round. 
+     *  Beware that withdrawals are allowed only after the dispute gets Resolved. 
      *  @param _itemID The ID of the disputed item.
      *  @param _beneficiary The address that made the contributions.
-     *  @return total The reward value to which the _beneficiary is entitled.
+     *  @param _round The round from which to withdraw.
+     *  @return reward The reward value to which the _beneficiary is entitled at a given round.
      */
-    function withdrawableAmount(
+    function getWithdrawableAmount(
         ArbitrableStorage storage self, 
         uint256 _itemID, 
-        address _beneficiary
-    ) internal view returns(uint256 total) {
+        address _beneficiary, 
+        uint256 _round
+    ) internal view returns(uint256 reward) {
 
         ItemData storage item = self.items[_itemID];
-        if (item.status != Status.Resolved) return total;        
-
-        uint256 totalRounds = item.rounds.length;
-        for (uint256 i = 0; i < totalRounds; i++) {
-            Round storage round = item.rounds[i];
-            if (i == totalRounds - 1) {
-                total += round.contributions[_beneficiary][PARTY_A] + round.contributions[_beneficiary][PARTY_B];
-            } else if (item.ruling == 0) {
-                uint256 totalFeesPaid = round.paidFees[PARTY_A] + round.paidFees[PARTY_B];
-                uint256 totalBeneficiaryContributions = round.contributions[_beneficiary][PARTY_A] + round.contributions[_beneficiary][PARTY_B];
-                total += totalFeesPaid > 0 ? (totalBeneficiaryContributions * round.feeRewards) / totalFeesPaid : 0;
-            } else {
-                total += round.paidFees[item.ruling] > 0
-                    ? (round.contributions[_beneficiary][item.ruling] * round.feeRewards) / round.paidFees[item.ruling]
-                    : 0;
-            }
+        Round storage round = item.rounds[_round];
+        uint256 lastRound = item.rounds.length - 1;
+        uint256[3] storage contributionTo = round.contributions[_beneficiary];
+        
+        if (_round == lastRound) {
+            // Allow to reimburse if funding was unsuccessful.
+            reward = contributionTo[PARTY_A] + contributionTo[PARTY_B];
+        } else if (item.ruling == 0) {
+            // Reimburse unspent fees proportionally if there is no winner and loser.
+            uint256 totalFeesPaid = round.paidFees[PARTY_A] + round.paidFees[PARTY_B];
+            uint256 totalBeneficiaryContributions = contributionTo[PARTY_A] + contributionTo[PARTY_B];
+            reward = totalFeesPaid > 0 ? (totalBeneficiaryContributions * round.feeRewards) / totalFeesPaid : 0;
+        } else {
+            // Reward the winner.
+            reward = round.paidFees[item.ruling] > 0
+                ? (contributionTo[item.ruling] * round.feeRewards) / round.paidFees[item.ruling]
+                : 0;
         }
     }
 
@@ -424,7 +404,7 @@ library BinaryArbitrable {
         uint256 _itemID, 
         uint256 _round
         ) internal view returns(
-            uint256[3] memory paidFees,
+            uint256[3] storage paidFees,
             uint256 rulingFunded,
             uint256 feeRewards,
             bool appealed
@@ -445,18 +425,17 @@ library BinaryArbitrable {
      *  @param _itemID The ID of the disputed item.
      *  @param _round The round number.
      *  @param _contributor The address of the contributor.
-     *  @return contributions Array of contributions order according to Party enum.
+     *  @return contributions Array of contributions. Notice that index 0 corresponds to 'refuse to rule' and will always be empty.
      */
     function getContributions(
         ArbitrableStorage storage self, 
         uint256 _itemID, 
         uint256 _round,
         address _contributor
-    ) internal view returns(uint256[3] memory contributions) {
+    ) internal view returns(uint256[3] storage contributions) {
         
         ItemData storage item = self.items[_itemID];
         Round storage round = item.rounds[_round];
         contributions = round.contributions[_contributor];
     }
-
 }

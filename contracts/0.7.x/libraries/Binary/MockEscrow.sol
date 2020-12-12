@@ -444,19 +444,22 @@ contract MockEscrow is IArbitrable, IEvidence, IAppealEvents {
     // *     Constant getters     * //
     // **************************** //
     
-    /** @dev Returns the sum of withdrawable wei from appeal rounds. This function is O(n), where n is the number of rounds of the transaction. 
-     *  This could exceed the gas limit, therefore this function should only be used for interface display and not by other contracts.
+    /** @dev Returns the sum of withdrawable wei from appeal rounds. 
+     *  This function is O(n), where n is the number of rounds of the task. This could exceed the gas limit, therefore this function should only be used for interface display and not by other contracts.
+     *  Beware that withdrawals are allowed only after the dispute gets Resolved. 
      *  @param _transactionID The index of the transaction.
      *  @param _transaction The transaction state.
      *  @param _beneficiary The contributor for which to query.
      *  @return total The total amount of wei available to withdraw.
      */
-    function withdrawableAmount(
+    function getTotalWithdrawableAmount(
         uint256 _transactionID, 
         Transaction calldata _transaction, 
         address _beneficiary
     ) public view onlyValidTransaction(_transactionID, _transaction) returns (uint256 total) {
-        total = arbitrableStorage.withdrawableAmount(_transactionID, _beneficiary);
+        uint256 totalRounds = arbitrableStorage.items[_transactionID].rounds.length;
+        for (uint256 roundI; roundI < totalRounds; roundI++)
+            total += arbitrableStorage.getWithdrawableAmount(_transactionID, _beneficiary, roundI);
     }
 
     /** @dev Getter to know the count of transactions.

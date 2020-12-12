@@ -446,13 +446,17 @@ contract Linguo is IArbitrable, IEvidence, IAppealEvents {
     // *      Getters     * //
     // ******************** //
 
-    /** @dev Returns the sum of withdrawable wei from appeal rounds. This function is O(n), where n is the number of rounds of the task. This could exceed the gas limit, therefore this function should only be used for interface display and not by other contracts.
+    /** @dev Returns the sum of withdrawable wei from appeal rounds. 
+     *  This function is O(n), where n is the number of rounds of the task. This could exceed the gas limit, therefore this function should only be used for interface display and not by other contracts.
+     *  Beware that withdrawals are allowed only after the dispute gets Resolved. 
      *  @param _taskID The ID of the associated task.
      *  @param _beneficiary The contributor for which to query.
      *  @return total The total amount of wei available to withdraw.
      */
-    function withdrawableAmount(uint256 _taskID, address payable _beneficiary) external view returns (uint256 total) {
-        total = arbitrableStorage.withdrawableAmount(_taskID, _beneficiary);
+    function getTotalWithdrawableAmount(uint256 _taskID, address _beneficiary) external view returns (uint256 total) {
+        uint256 totalRounds = arbitrableStorage.items[_taskID].rounds.length;
+        for (uint256 roundI; roundI < totalRounds; roundI++)
+            total += arbitrableStorage.getWithdrawableAmount(_taskID, _beneficiary, roundI);
     }
 
     /** @dev Gets the deposit required for self-assigning the task.

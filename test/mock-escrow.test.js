@@ -1483,12 +1483,12 @@ describe('MockEscrow contract', async () => {
 
       // Batch-withdraw (checking if _cursor and _count arguments are working as expected).
       const balancesBefore = await getBalances()
-      const withdrawableAmount1 = await contract.withdrawableAmount(
+      const withdrawableAmount1 = await contract.getTotalWithdrawableAmount(
         transactionId,
         ruleTransaction,
         await crowdfunder1.getAddress()
       )
-      const withdrawableAmount2 = await contract.withdrawableAmount(
+      const withdrawableAmount2 = await contract.getTotalWithdrawableAmount(
         transactionId,
         ruleTransaction,
         await crowdfunder2.getAddress()

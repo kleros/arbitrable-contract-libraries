@@ -265,8 +265,10 @@ We are almost done! Let's finish our Escrow contract by adding some useful gette
         return arbitrableStorage.getContributions(TX_ID, _round, _contributor);
     }
 
-    function withdrawableAmount(address _beneficiary) external view returns (uint256 total) {
-        total = arbitrableStorage.withdrawableAmount(TX_ID, _beneficiary);
+    function getTotalWithdrawableAmount(address _beneficiary) external view returns (uint256 total) {
+        uint256 totalRounds = arbitrableStorage.items[TX_ID].rounds.length;
+        for (uint256 roundI; roundI < totalRounds; roundI++)
+            total += arbitrableStorage.getWithdrawableAmount(TX_ID, _beneficiary, roundI);
     }
 ```
 
