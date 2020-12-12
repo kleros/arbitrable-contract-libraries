@@ -1199,7 +1199,7 @@ describe('MockEscrow contract', async () => {
       )
 
       const balancesBefore = await getBalances()
-      await withdrawHelper(
+      const [withdrawPromiseCF1, _withdrawTxCF1, _withdrawReceiptCF1] = await withdrawHelper(
         await crowdfunder1.getAddress(),
         transactionId,
         ruleTransaction,
@@ -1213,7 +1213,7 @@ describe('MockEscrow contract', async () => {
         0,
         other
       ) // Attempt to withdraw twice
-      await withdrawHelper(
+      const [withdrawPromiseCF2, _withdrawTxCF2, _withdrawReceiptCF2] = await withdrawHelper(
         await crowdfunder2.getAddress(),
         transactionId,
         ruleTransaction,
@@ -1257,6 +1257,9 @@ describe('MockEscrow contract', async () => {
         balancesAfter.crowdfunder1,
         'Contributor 1 was not rewarded correctly'
       )
+      expect(withdrawPromiseCF1)
+        .to.emit(contract, 'Withdrawal')
+        .withArgs(transactionId, BigNumber.from(0), BigNumber.from(0), await crowdfunder1.getAddress(), reward3)
 
       const reward4 = BigNumber.from(contribution4)
         .mul(feeRewards)
@@ -1265,6 +1268,9 @@ describe('MockEscrow contract', async () => {
         balancesAfter.crowdfunder2,
         'Contributor 2 was not rewarded correctly'
       )
+      expect(withdrawPromiseCF2)
+        .to.emit(contract, 'Withdrawal')
+        .withArgs(transactionId, BigNumber.from(0), BigNumber.from(0), await crowdfunder2.getAddress(), reward4)
     })
 
     it('Should withdraw correct fees if arbitrator refused to arbitrate', async () => {
