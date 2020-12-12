@@ -45,7 +45,7 @@ library MultiOutcomeArbitrable {
 
     /* *** Events *** */
 
-    /// @dev events have to be defined both in the library and in the contract where the library is used.
+    /// @dev When a library function emits an event, Solidity requires the event to be defined both inside the library and in the contract where the library is used. Make sure that your arbitrable contract inherits the interfaces mentioned below in order to comply with this (IArbitrable, IEvidence and IAppealEvents).
     /// @dev See {@kleros/erc-792/contracts/IArbitrable.sol}
     event Ruling(IArbitrator indexed _arbitrator, uint256 indexed _disputeID, uint256 _ruling);
 
@@ -55,22 +55,14 @@ library MultiOutcomeArbitrable {
     /// @dev See {@kleros/erc-792/contracts/erc-1497/IEvidence.sol}
     event Dispute(IArbitrator indexed _arbitrator, uint256 indexed _disputeID, uint256 _metaEvidenceID, uint256 _evidenceGroupID);
 
-    /** @dev To be emitted when the appeal fees of one of the parties are fully funded.
-     *  @param _itemID The ID of the respective transaction.
-     *  @param _ruling The ruling that is fully funded.
-     *  @param _round The appeal round fully funded by _party. Starts from 0.
-     */
-    event HasPaidAppealFee(uint256 indexed _itemID, uint256 _ruling, uint256 _round);
+    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}
+    event HasPaidAppealFee(uint256 indexed _itemID, uint256 indexed _ruling, uint256 _round);
 
-    /**
-     *  @dev To be emitted when someone contributes to the appeal process.
-     *  @param _itemID The ID of the respective transaction.
-     *  @param _ruling The ruling which received the contribution.
-     *  @param _contributor The address of the contributor.
-     *  @param _round The appeal round to which the contribution is going. Starts from 0.
-     *  @param _amount The amount contributed.
-     */
-    event AppealContribution(uint256 indexed _itemID, uint256 _ruling, address indexed _contributor, uint256 _round, uint256 _amount);
+    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}
+    event AppealContribution(uint256 indexed _itemID, uint256 indexed _ruling, address indexed _contributor, uint256 _round, uint256 _amount);
+
+    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}
+    event Withdrawal(uint256 indexed _itemID, uint256 indexed _round, uint256 _ruling, address indexed _contributor, uint256 _reward);
 
     // **************************** //
     // *    Modifying the state   * //
