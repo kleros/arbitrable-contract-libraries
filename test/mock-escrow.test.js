@@ -1150,7 +1150,7 @@ describe('MockEscrow contract', async () => {
       await expect(
         contract
           .connect(crowdfunder1)
-          .batchRoundWithdraw(
+          .batchWithdrawFeesAndRewards(
             await crowdfunder1.getAddress(),
             transactionId,
             disputeTransaction,
@@ -1490,7 +1490,7 @@ describe('MockEscrow contract', async () => {
 
       const tx1 = await contract
         .connect(other)
-        .batchRoundWithdraw(
+        .batchWithdrawFeesAndRewards(
           await crowdfunder1.getAddress(),
           transactionId,
           ruleTransaction,
@@ -1500,7 +1500,7 @@ describe('MockEscrow contract', async () => {
       await tx1.wait()
       const tx2 = await contract
         .connect(other)
-        .batchRoundWithdraw(
+        .batchWithdrawFeesAndRewards(
           await crowdfunder2.getAddress(),
           transactionId,
           ruleTransaction,
@@ -1510,7 +1510,7 @@ describe('MockEscrow contract', async () => {
       await tx2.wait()
       const tx3 = await contract
         .connect(other)
-        .batchRoundWithdraw(
+        .batchWithdrawFeesAndRewards(
           await crowdfunder2.getAddress(),
           transactionId,
           ruleTransaction,
