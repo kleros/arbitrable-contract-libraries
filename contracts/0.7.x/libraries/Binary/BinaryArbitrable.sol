@@ -118,11 +118,15 @@ library BinaryArbitrable {
 
         ItemData storage item = self.items[_itemID];
         require(item.status == Status.None, "Item already disputed.");
-        item.status = Status.Disputed;
+
         disputeID = self.arbitrator.createDispute{value: _arbitrationCost}(AMOUNT_OF_CHOICES, self.arbitratorExtraData);
-        item.rounds.push();
-        self.disputeIDtoItemID[disputeID] = _itemID;
+
+        item.status = Status.Disputed;
         item.disputeID = disputeID;
+        item.rounds.push();
+
+        self.disputeIDtoItemID[disputeID] = _itemID;
+        
         emit Dispute(self.arbitrator, disputeID, _metaEvidenceID, _evidenceGroupID);
     }
 

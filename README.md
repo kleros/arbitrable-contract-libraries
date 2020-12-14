@@ -170,7 +170,7 @@ Lastly, we need to update `rule()` in order to let the arbitrator enforce a ruli
     }
 ```
 
-All the important sanity checks and the emission of the `Ruling` event are done inside `processRuling()`. Beware that `_ruling` and `_finalRuling` can difer if appeals were funded.
+All the important sanity checks and the emission of the `Ruling` event are done inside `processRuling()`. Beware that `_ruling` and `_finalRuling` can differ if appeals were funded.
 
 ### Evidence
 
