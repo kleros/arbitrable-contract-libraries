@@ -716,14 +716,14 @@ describe('MockEscrow contract', async () => {
         .to.emit(contract, 'AppealContribution')
         .withArgs(
           transactionId,
+          BigNumber.from(0),
           TransactionParty.Receiver,
           await crowdfunder1.getAddress(),
-          BigNumber.from(0),
           loserAppealFee
         )
       expect(txPromise1)
         .to.emit(contract, 'HasPaidAppealFee')
-        .withArgs(transactionId, TransactionParty.Receiver, BigNumber.from(0))
+        .withArgs(transactionId, BigNumber.from(0), TransactionParty.Receiver)
 
       // Fully fund the winner side
       const txPromise2 = contract
@@ -742,14 +742,14 @@ describe('MockEscrow contract', async () => {
         .to.emit(contract, 'AppealContribution')
         .withArgs(
           transactionId,
+          BigNumber.from(0),
           TransactionParty.Sender,
           await crowdfunder2.getAddress(),
-          BigNumber.from(0),
           winnerAppealFee
         )
       expect(txPromise2)
         .to.emit(contract, 'HasPaidAppealFee')
-        .withArgs(transactionId, TransactionParty.Sender, BigNumber.from(0))
+        .withArgs(transactionId, BigNumber.from(0), TransactionParty.Sender)
 
       // Round zero must be updated correctly
       ;[
@@ -844,9 +844,9 @@ describe('MockEscrow contract', async () => {
         .to.emit(contract, 'AppealContribution')
         .withArgs(
           transactionId,
+          BigNumber.from(0),
           TransactionParty.Receiver,
           await crowdfunder1.getAddress(),
-          BigNumber.from(0),
           contribution1
         )
       // Round zero must be updated correctly
@@ -892,14 +892,14 @@ describe('MockEscrow contract', async () => {
         .to.emit(contract, 'AppealContribution')
         .withArgs(
           transactionId,
+          BigNumber.from(0),
           TransactionParty.Receiver,
           receiverAddress,
-          BigNumber.from(0),
           expectedContribution2
         )
       expect(txPromise2)
         .to.emit(contract, 'HasPaidAppealFee')
-        .withArgs(transactionId, TransactionParty.Receiver, BigNumber.from(0))
+        .withArgs(transactionId, BigNumber.from(0), TransactionParty.Receiver)
       // Contributor must be refunded correctly
       const balanceAfterContribution2 = await receiver.getBalance()
       expect(balanceBeforeContribution2).to.equal(
@@ -964,9 +964,9 @@ describe('MockEscrow contract', async () => {
         .to.emit(contract, 'AppealContribution')
         .withArgs(
           transactionId,
+          BigNumber.from(0),
           TransactionParty.Sender,
           await crowdfunder2.getAddress(),
-          BigNumber.from(0),
           contribution3
         )
       // Round zero must be updated correctly
@@ -1015,14 +1015,14 @@ describe('MockEscrow contract', async () => {
         .to.emit(contract, 'AppealContribution')
         .withArgs(
           transactionId,
+          BigNumber.from(0),
           TransactionParty.Sender,
           senderAddress,
-          BigNumber.from(0),
           expectedContribution4
         )
       expect(txPromise4)
         .to.emit(contract, 'HasPaidAppealFee')
-        .withArgs(transactionId, TransactionParty.Sender, BigNumber.from(0))
+        .withArgs(transactionId, BigNumber.from(0), TransactionParty.Sender)
       // Contributor must be refunded correctly
       const balanceAfterContribution4 = await sender.getBalance()
       expect(balanceBeforeContribution4).to.equal(

@@ -56,10 +56,10 @@ library MultiOutcomeArbitrable {
     event Dispute(IArbitrator indexed _arbitrator, uint256 indexed _disputeID, uint256 _metaEvidenceID, uint256 _evidenceGroupID);
 
     /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}
-    event HasPaidAppealFee(uint256 indexed _itemID, uint256 indexed _ruling, uint256 _round);
+    event HasPaidAppealFee(uint256 indexed _itemID, uint256 _round, uint256 indexed _ruling);
 
     /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}
-    event AppealContribution(uint256 indexed _itemID, uint256 indexed _ruling, address indexed _contributor, uint256 _round, uint256 _amount);
+    event AppealContribution(uint256 indexed _itemID, uint256 _round, uint256 indexed _ruling, address indexed _contributor, uint256 _amount);
 
     /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}
     event Withdrawal(uint256 indexed _itemID, uint256 indexed _round, uint256 _ruling, address indexed _contributor, uint256 _reward);
@@ -187,7 +187,7 @@ library MultiOutcomeArbitrable {
             (contribution, remainingETH) = calculateContribution(msg.value, totalCost.subCap(round.paidFees[_ruling]));
             round.contributions[msg.sender][_ruling] += contribution;
             round.paidFees[_ruling] += contribution;
-            emit AppealContribution(_itemID, _ruling, msg.sender, item.rounds.length - 1, contribution);
+            emit AppealContribution(_itemID, item.rounds.length - 1, _ruling, msg.sender, contribution);
 
             // Reimburse leftover ETH if any.
             if (remainingETH > 0)
@@ -195,7 +195,7 @@ library MultiOutcomeArbitrable {
         }
         
         if (round.paidFees[_ruling] >= totalCost) {
-            emit HasPaidAppealFee(_itemID, _ruling, item.rounds.length - 1);
+            emit HasPaidAppealFee(_itemID, item.rounds.length - 1, _ruling);
             if (round.rulingsFunded[0] == 0) {
                 round.rulingsFunded[0] = _ruling;
             } else {
