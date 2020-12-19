@@ -23,9 +23,7 @@
     "build"
   ],
   "scripts": {
-    "build": "run-s -s build:4 build:7",
-    "build:4": "npx hardhat compile --config hardhat.config.4.js",
-    "build:7": "npx hardhat compile",
+    "build": "npx hardhat compile",
     "clean": "npx hardhat clean",
     "prettify": "kathari prettify",
     "lint:sol": "solhint 'contracts/**/*.sol'",
@@ -63,7 +61,7 @@
     "ethereum-waffle": "^3.1.0",
     "ethers": "^5.0.14",
     "ganache-cli": "^6.3.0",
-    "hardhat": "^2.0.4",
+    "hardhat": "^2.0.6",
     "husky": "^4.3.0",
     "npm-run-all": "^4.1.5",
     "pify": "^4.0.1",

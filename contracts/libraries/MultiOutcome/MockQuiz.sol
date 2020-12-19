@@ -301,12 +301,16 @@ contract MockQuiz is IArbitrable, IEvidence, IAppealEvents {
      *  @param _answer The answer that pays the appeal fee.
      *  @return total The total amount of wei available to withdraw.
      */
-    function amountWithdrawable(
+    function getTotalWithdrawableAmount(
         uint256 _questionID, 
-        address payable _beneficiary,
+        address _beneficiary,
         uint256 _answer
     ) external view returns (uint256 total) {
-        total = arbitrableStorage.amountWithdrawable(_questionID, _beneficiary, _answer);
+        if (arbitrableStorage.items[_questionID].status != MultiOutcomeArbitrable.Status.Resolved) return total;
+
+        uint256 totalRounds = arbitrableStorage.items[_questionID].rounds.length;
+        for (uint256 roundI; roundI < totalRounds; roundI++)
+            total += arbitrableStorage.getWithdrawableAmount(_questionID, _beneficiary, roundI, _answer);
     }
 
     /** @dev Gets the total number of created questions.

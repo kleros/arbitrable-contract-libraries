@@ -113,14 +113,17 @@ library MultiOutcomeArbitrable {
         uint256 _metaEvidenceID,
         uint256 _evidenceGroupID
     ) internal returns(uint256 disputeID) {
-
         ItemData storage item = self.items[_itemID];
         require(item.status == Status.Undisputed, "Item already disputed.");
-        item.status = Status.Disputed;
+        
         disputeID = self.arbitrator.createDispute{value: _arbitrationCost}(MAX_NO_OF_CHOICES, self.arbitratorExtraData);
-        item.rounds.push();
-        self.disputeIDtoItemID[disputeID] = _itemID;
+        
+        item.status = Status.Disputed;
         item.disputeID = disputeID;
+        item.rounds.push();
+
+        self.disputeIDtoItemID[disputeID] = _itemID;
+
         emit Dispute(self.arbitrator, disputeID, _metaEvidenceID, _evidenceGroupID);
     }
 
@@ -156,43 +159,21 @@ library MultiOutcomeArbitrable {
         ItemData storage item = self.items[_itemID];
         require(item.status == Status.Disputed, "No ongoing dispute to appeal.");
         require(_ruling != 0, "Invalid ruling.");
-
-        (uint256 appealPeriodStart, uint256 appealPeriodEnd) = self.arbitrator.appealPeriod(item.disputeID);
-        require(block.timestamp >= appealPeriodStart && block.timestamp < appealPeriodEnd, "Not in appeal period.");
-
-        uint256 multiplier;
-        {
-            // Scope needed to prevent "stack to deep" errors.
-            uint256 winner = self.arbitrator.currentRuling(item.disputeID);
-            if (winner == _ruling){
-                multiplier = self.winnerStakeMultiplier;
-            } else if (winner == 0){
-                multiplier = self.sharedStakeMultiplier;
-            } else {
-                require(block.timestamp < (appealPeriodEnd + appealPeriodStart)/2, "Not in loser's appeal period.");
-                multiplier = self.loserStakeMultiplier;
-            }
-        }
         
         Round storage round = item.rounds[item.rounds.length - 1];
         require(_ruling != round.rulingsFunded[0], "Appeal fee has already been paid.");
 
-        uint256 appealCost = self.arbitrator.appealCost(item.disputeID, self.arbitratorExtraData);
-        uint256 totalCost = appealCost.addCap((appealCost.mulCap(multiplier)) / MULTIPLIER_DIVISOR);
-        {
-            // Scope needed to prevent "stack to deep" errors.
-            // Take up to the amount necessary to fund the current round at the current costs.
-            uint256 contribution;
-            uint256 remainingETH;
-            (contribution, remainingETH) = calculateContribution(msg.value, totalCost.subCap(round.paidFees[_ruling]));
-            round.contributions[msg.sender][_ruling] += contribution;
-            round.paidFees[_ruling] += contribution;
-            emit AppealContribution(_itemID, item.rounds.length - 1, _ruling, msg.sender, contribution);
+        (uint256 appealCost, uint256 totalCost) = getAppealFeeComponents(self, _itemID, _ruling);
 
-            // Reimburse leftover ETH if any.
-            if (remainingETH > 0)
-                msg.sender.send(remainingETH); // Deliberate use of send in order to not block the contract in case of reverting fallback.
-        }
+        // Take up to the amount necessary to fund the current round at the current costs.
+        (uint256 contribution, uint256 remainingETH) = calculateContribution(msg.value, totalCost.subCap(round.paidFees[_ruling]));
+        round.contributions[msg.sender][_ruling] += contribution;
+        round.paidFees[_ruling] += contribution;
+        emit AppealContribution(_itemID, item.rounds.length - 1, _ruling, msg.sender, contribution);
+
+        // Reimburse leftover ETH if any.
+        if (remainingETH > 0)
+            msg.sender.send(remainingETH); // Deliberate use of send in order to not block the contract in case of reverting fallback.
         
         if (round.paidFees[_ruling] >= totalCost) {
             emit HasPaidAppealFee(_itemID, item.rounds.length - 1, _ruling);
@@ -218,7 +199,6 @@ library MultiOutcomeArbitrable {
         uint256 _disputeID, 
         uint256 _ruling
     ) internal returns(uint256 finalRuling) {
-        
         uint256 itemID = self.disputeIDtoItemID[_disputeID];
         ItemData storage item = self.items[itemID];
 
@@ -239,7 +219,7 @@ library MultiOutcomeArbitrable {
         emit Ruling(self.arbitrator, _disputeID, finalRuling);
     }
 
-    /** @dev Calculates the reward that the _beneficiary is entitled to at _round and clears the storage.
+    /** @dev Calculates the reward that the _beneficiary is entitled to at _round, clears the storage and emits the corresponding Withdrawal event.
      *  Beware that this function does NOT check the status of the dispute and does NOT send the rewards to the _beneficiary. Use withdrawFeesAndRewards() for that purpose.
      *  @param _itemID The ID of the disputed item.
      *  @param _beneficiary The address that made contributions.
@@ -247,7 +227,7 @@ library MultiOutcomeArbitrable {
      *  @param _round The round from which to withdraw.
      *  @return reward The reward value that was withdrawn and can be sent to the _beneficiary.
      */
-    function _withdrawFeesAndRewards(
+    function _registerWithdrawal(
         ArbitrableStorage storage self, 
         uint256 _itemID, 
         address _beneficiary, 
@@ -265,6 +245,7 @@ library MultiOutcomeArbitrable {
             // Notice that in practice jurors can vote for rulings that didn't fund the appeal. If this happens, contributors to the winner ruling are only entitle to receive their contributions back.
             reward = contributionTo[_ruling];
             contributionTo[_ruling] = 0;
+            emit Withdrawal(_itemID, _round, _ruling, _beneficiary, reward);
         } else if (round.rulingsFunded[0] != item.ruling && round.rulingsFunded[1] != item.ruling) {
             // Reimburse unspent fees proportionally, if none of the funding rulings won.
             uint256 totalFeesPaid = round.paidFees[round.rulingsFunded[0]] + round.paidFees[round.rulingsFunded[1]];
@@ -273,12 +254,15 @@ library MultiOutcomeArbitrable {
 
             contributionTo[round.rulingsFunded[0]] = 0;
             contributionTo[round.rulingsFunded[1]] = 0;
+            emit Withdrawal(_itemID, _round, round.rulingsFunded[0], _beneficiary, reward);
+            emit Withdrawal(_itemID, _round, round.rulingsFunded[1], _beneficiary, reward);
         } else if (_ruling == item.ruling) {
             // Reward the winner.
             reward = round.paidFees[item.ruling] > 0
                 ? (contributionTo[item.ruling] * round.feeRewards) / round.paidFees[item.ruling]
                 : 0;
             contributionTo[item.ruling] = 0;
+            emit Withdrawal(_itemID, _round, item.ruling, _beneficiary, reward);
         }
     }
 
@@ -297,7 +281,7 @@ library MultiOutcomeArbitrable {
         uint256 _round
     ) internal {
         require(self.items[_itemID].status == Status.Resolved, "Dispute not resolved.");
-        uint256 reward = _withdrawFeesAndRewards(self, _itemID, _beneficiary, _ruling, _round);
+        uint256 reward = _registerWithdrawal(self, _itemID, _beneficiary, _ruling, _round);
         _beneficiary.send(reward); // It is the user responsibility to accept ETH.
     }
     
@@ -326,7 +310,7 @@ library MultiOutcomeArbitrable {
         if (maxRound > item.rounds.length)
             maxRound = item.rounds.length;
         for (uint256 i = _cursor; i < maxRound; i++)
-            reward += _withdrawFeesAndRewards(self, _itemID, _beneficiary, _ruling, i);
+            reward += _registerWithdrawal(self, _itemID, _beneficiary, _ruling, i);
         
         _beneficiary.send(reward); // It is the user responsibility to accept ETH.
     }
@@ -350,7 +334,7 @@ library MultiOutcomeArbitrable {
 
         uint256 reward;
         for (uint256 i = 0; i < _rulings.length; i++) 
-            reward += _withdrawFeesAndRewards(self, _itemID, _beneficiary, _rulings[i], _round);
+            reward += _registerWithdrawal(self, _itemID, _beneficiary, _rulings[i], _round);
         
         _beneficiary.send(reward); // It is the user responsibility to accept ETH.
     }
@@ -359,42 +343,39 @@ library MultiOutcomeArbitrable {
     // *      Getters     * //
     // ******************** //
 
-    /** @dev Gets the rewards withdrawable for a given ruling taken into account all rounds. 
-     *  This function is O(n) where n is the number of rounds. 
-     *  This could exceed the gas limit, therefore this function should be used only as a utility and not be relied upon by other contracts.
+    /** @dev Gets the rewards withdrawable for a given round and ruling. 
+     *  Beware that withdrawals are allowed only after the dispute gets Resolved. 
      *  @param _itemID The ID of the disputed item.
      *  @param _beneficiary The address that made the contributions.
+     *  @param _round The round from which to withdraw.
      *  @param _ruling The ruling to which the contributions were made.
-     *  @return total The reward value to which the _beneficiary is entitled.
+     *  @return reward The reward value to which the _beneficiary is entitled.
      */
-    function amountWithdrawable(
+    function getWithdrawableAmount(
         ArbitrableStorage storage self, 
         uint256 _itemID, 
         address _beneficiary, 
+        uint256 _round, 
         uint256 _ruling
-    ) internal view returns(uint256 total) {
-        
+    ) internal view returns(uint256 reward) {
         ItemData storage item = self.items[_itemID];
-        if (item.status != Status.Resolved) return total;   
+        Round storage round = item.rounds[_round];
+        mapping(uint256 => uint256) storage contributionTo = round.contributions[_beneficiary];
+        uint256 lastRound = item.rounds.length - 1;
 
-        uint256 totalRounds = item.rounds.length;
-        for (uint256 i = 0; i < totalRounds; i++) {
-            Round storage round = item.rounds[i];
-            mapping(uint256 => uint256) storage contributionTo = round.contributions[_beneficiary];
-            if (i == totalRounds-1 || (round.rulingsFunded[0] != _ruling && round.rulingsFunded[1] != _ruling)) {
-                // Allow to reimburse if funding was unsuccessful, i.e. appeal wasn't created or ruling wasn't fully funded.
-                total += contributionTo[_ruling];
-            } else if (round.rulingsFunded[0] != item.ruling && round.rulingsFunded[1] != item.ruling) {
-                // Reimburse unspent fees proportionally, if none of the funding rulings won.
-                uint256 totalFeesPaid = round.paidFees[round.rulingsFunded[0]] + round.paidFees[round.rulingsFunded[1]];
-                uint256 totalBeneficiaryContributions = contributionTo[round.rulingsFunded[0]] + contributionTo[round.rulingsFunded[1]];
-                total += totalFeesPaid > 0 ? (totalBeneficiaryContributions * round.feeRewards) / totalFeesPaid : 0;
-            } else if (_ruling == item.ruling) {
-                // Reward the winner.
-                total += round.paidFees[item.ruling] > 0
-                    ? (contributionTo[item.ruling] * round.feeRewards) / round.paidFees[item.ruling]
-                    : 0;
-            }
+        if (_round == lastRound || (round.rulingsFunded[0] != _ruling && round.rulingsFunded[1] != _ruling)) {
+            // Allow to reimburse if funding was unsuccessful, i.e. appeal wasn't created or ruling wasn't fully funded.
+            reward = contributionTo[_ruling];
+        } else if (round.rulingsFunded[0] != item.ruling && round.rulingsFunded[1] != item.ruling) {
+            // Reimburse unspent fees proportionally, if none of the funding rulings won.
+            uint256 totalFeesPaid = round.paidFees[round.rulingsFunded[0]] + round.paidFees[round.rulingsFunded[1]];
+            uint256 totalBeneficiaryContributions = contributionTo[round.rulingsFunded[0]] + contributionTo[round.rulingsFunded[1]];
+            reward = totalFeesPaid > 0 ? (totalBeneficiaryContributions * round.feeRewards) / totalFeesPaid : 0;
+        } else if (_ruling == item.ruling) {
+            // Reward the winner.
+            reward = round.paidFees[item.ruling] > 0
+                ? (contributionTo[item.ruling] * round.feeRewards) / round.paidFees[item.ruling]
+                : 0;
         }
     }
 
@@ -413,6 +394,37 @@ library MultiOutcomeArbitrable {
 
         remainder = _available - _requiredAmount;
         return (_requiredAmount, remainder);
+    }
+
+    /**
+     *  @dev Calculates the appeal fee and total cost for an arbitration.
+     *  @param _itemID The ID of the disputed item.
+     *  @param _ruling The ruling to which the contribution is made.
+     *  @return appealCost The appeal fee charged by the arbitrator.  @return totalCost The total cost for appealing.
+    */
+    function getAppealFeeComponents(
+        ArbitrableStorage storage self,
+        uint256 _itemID,
+        uint256 _ruling
+    ) internal view returns (uint256 appealCost, uint256 totalCost) {
+        ItemData storage item = self.items[_itemID];
+
+        (uint256 appealPeriodStart, uint256 appealPeriodEnd) = self.arbitrator.appealPeriod(item.disputeID);
+        require(block.timestamp >= appealPeriodStart && block.timestamp < appealPeriodEnd, "Not in appeal period.");
+
+        uint256 multiplier;
+        uint256 winner = self.arbitrator.currentRuling(item.disputeID);
+        if (winner == _ruling){
+            multiplier = self.winnerStakeMultiplier;
+        } else if (winner == 0){
+            multiplier = self.sharedStakeMultiplier;
+        } else {
+            require(block.timestamp < (appealPeriodEnd + appealPeriodStart)/2, "Not in loser's appeal period.");
+            multiplier = self.loserStakeMultiplier;
+        }
+
+        appealCost = self.arbitrator.appealCost(item.disputeID, self.arbitratorExtraData);
+        totalCost = appealCost.addCap((appealCost.mulCap(multiplier)) / MULTIPLIER_DIVISOR);
     }
 
     /** @dev Gets the final ruling if the dispute is resolved.
