@@ -187,7 +187,7 @@ library BinaryArbitrable {
         }
     }
 
-    /** @dev Validates and registers the ruling for a dispute. Can only be called by the arbitrator.
+    /** @dev Validates and registers the ruling for a dispute. Can only be called from the IArbitrable rule() function, which is called by the arbitrator.
      *  The purpose of this function is to ensure that the address calling it has the right to rule on the contract. The ruling is inverted if a party loses from lack of appeal fees funding.
      *  @param _disputeID ID of the dispute in the Arbitrator contract.
      *  @param _ruling Ruling given by the arbitrator. Note that 0 is reserved for "Refuse to arbitrate".
