@@ -29,7 +29,7 @@ interface IAppealEvents {
 
     /** @dev To be raised inside withdrawFeesAndRewards function.
      *  @param _itemID The ID of the respective dispute.
-     *  @param _round The appeal round to which the contribution is going. Starts from 0.
+     *  @param _round The appeal round to from which rewards are withdrawn. Starts from 0.
      *  @param _ruling Indicates the ruling option which got the contribution.
      *  @param _contributor Caller of fundAppeal function.
      *  @param _reward Total amount of deposits reimbursed plus rewards.
