@@ -38,7 +38,7 @@ Let's rewrite this [Escrow](https://developer.kleros.io/en/latest/implementing-a
 - handle the entire arbitration cycle.
 - let users submit evidence.
 - add support for appeals which can be crowdfunded.
-- let appeal funders withdraw their rewards if they funded the winning side.
+- let appeal funders withdraw their rewards if they funded the winning ruling.
 - add getters to keep track of the appeal status of disputes.
 
 You can find the finished sample contract [here](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/libraries/Binary/SimpleEscrow.sol).
@@ -73,13 +73,16 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
     uint256 public constant reclamationPeriod = 3 minutes;
     uint256 public constant arbitrationFeeDepositPeriod = 3 minutes;
 
+    enum RulingOptions {RefusedToArbitrate, PayerWins, PayeeWins}
     enum Status {Initial, Reclaimed, Resolved}
     Status public status;
 
     uint256 public reclaimedAt;
 ```
 
-Notice that `arbitrator`, `numberOfRulingOptions` and `RulingOptions` are taken care of inside the library. We define the transaction ID (`TX_ID`) and the MetaEvidence ID (`META_EVIDENCE_ID`) as constants, because this contract only handles a single transaction.
+To begin with, make sure your arbitrable contract inherits from IArbitrable, IEvidence and IAppealEvents. Even though the library takes care of emitting some of the events defined in the interfaces, Solidity requires events to be defined both in the library and in the contract using the library.
+
+Notice that `arbitrator` and `numberOfRulingOptions` are taken care of inside the library. We define the transaction ID (`TX_ID`) and the MetaEvidence ID (`META_EVIDENCE_ID`) as constants, because this contract only handles a single transaction.
 
 From now on, every time we interact with the arbitrator, we will do so through `arbitrableStorage`. As we will see, we won't have to worry about managing the dispute data. The library will manage it for us. However, before we start, `arbitrableStorage` needs to be set up:
 
@@ -101,14 +104,16 @@ From now on, every time we interact with the arbitrator, we will do so through `
     }
 ```
 
-First, we set the arbitrator data: its address and the extra data if needed. Second, we set the multipliers. The multipliers are only used during appeals. If you set them to values higher than zero, the cost of appealing is going to be adjusted depending on whether you are funding the loser's or the winner's side. More on that later.
+First, we set the arbitrator data: its address and the extra data if needed. Beware that this library is designed taking into account that the arbitrator **won't** change. If you need such flexibility, either deploy new contracts for each arbitrator or consider modifying the library to safely handle changes in arbitrator's data.
+
+Second, we set the multipliers. The multipliers are only used during appeals. If you set them to values higher than zero, the cost of appealing is going to be adjusted depending on whether you are funding the loser's or the winner's ruling. More on that later.
 
 Let's adapt `reclaimFunds()` now:
 
 ```js
     function reclaimFunds() public payable {
         BinaryArbitrable.Status disputeStatus = arbitrableStorage.items[TX_ID].status;
-        require(disputeStatus == BinaryArbitrable.Status.Undisputed, "Dispute has already been created.");
+        require(disputeStatus == BinaryArbitrable.Status.None, "Dispute has already been created.");
         require(status != Status.Resolved, "Transaction is already resolved.");
         require(msg.sender == payer, "Only the payer can reclaim the funds.");
 
@@ -156,16 +161,16 @@ Lastly, we need to update `rule()` in order to let the arbitrator enforce a ruli
 
 ```js
     function rule(uint256 _disputeID, uint256 _ruling) public override {
-        BinaryArbitrable.Party _finalRuling = arbitrableStorage.processRuling(_disputeID, _ruling);
+        RulingOptions _finalRuling = RulingOptions(arbitrableStorage.processRuling(_disputeID, _ruling));
 
-        if (_finalRuling == BinaryArbitrable.Party.Requester) payer.send(address(this).balance);
-        else if (_finalRuling == BinaryArbitrable.Party.Respondent) payee.send(address(this).balance);
+        if (_finalRuling == RulingOptions.PayerWins) payer.send(address(this).balance);
+        else if (_finalRuling == RulingOptions.PayeeWins) payee.send(address(this).balance);
 
         status = Status.Resolved;
     }
 ```
 
-All the important sanity checks and the emission of the `Ruling` event is done inside `processRuling()`. Beware that `_ruling` and `_finalRuling` can difer if appeals were funded.
+All the important sanity checks and the emission of the `Ruling` event are done inside `processRuling()`. Beware that `_ruling` and `_finalRuling` can differ if appeals were funded.
 
 ### Evidence
 
@@ -178,25 +183,26 @@ In many cases, it is very important that parties in dispute are allowed to defen
     }
 ```
 
-For our use case, we restrict the submission of evidence to the parties involved (payer and payee) and we let the library do the rest. The `Evidence` event is going to be emitted, which will make the evidence visible to the arbitrator. It is assumed that evidence can only be submitted until the dispute is resolved.
+For this use case, let's restrict the submission of evidence to the parties involved (payer and payee) and then we let the library do the rest. The `Evidence` event is going to be emitted, which will make the evidence visible to the arbitrator. It is assumed that evidence can only be submitted until the dispute is resolved.
 
 ### Crowdfunded appeals
 
-One thing you might be wondering is what happens if the ruling given by the arbitrator does not feel right. At Kleros, we believe that allowing rulings to be appealable is an important feature that increases arbitration quality and makes it more robust against attacks. 
+One thing you might be wondering is what happens if the ruling given by the arbitrator does not feel right. At Kleros, we believe that allowing rulings to be appealable is an important feature that increases arbitration quality and makes it more robust against dishonest behaviors. 
 
 If you decide to use an appealable arbitrator, you can easily add the appeal feature with a function like the following:
 
 ```js
-    function fundAppeal(BinaryArbitrable.Party _side) external payable {
-        arbitrableStorage.fundAppeal(TX_ID, _side);
+    function fundAppeal(uint256 _ruling) external payable {
+        arbitrableStorage.fundAppeal(TX_ID, _ruling);
     } 
 ```
 
 What you have to be aware of:
-- The appeal is created only if both sides fund it.
+- Because the library we are using only supports binary rulings, _ruling must be 1 or 2.
+- The appeal is created only if both rulings get funded.
 - The appeal can be crowdfunded, i.e. **anyone** can call `fundAppeal()` during the appeal period.
-- If you want to make it more costly/risky for a side to appeal, you can set the multipliers (in the constructor in this case).
-- If only one side is fully funded, then the appeal is not created and that side is considered the winner.
+- If you want to make it more costly/risky for a ruling to get funded, you can set the multipliers (in the constructor in this case).
+- If only one ruling is fully funded, then the appeal is not created and that ruling is considered the winner.
 - There can be as many appeal rounds as the arbitrator allows.
 - You don't have too worry about sanity checks or sending overpaid fees back. The library takes care of this.
 - `AppealContribution` and `HasPaidAppealFee` events are emitted. Check them out in `fundAppeal()` and in [IAppealEvents](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/interfaces/IAppealEvents.sol).
@@ -218,8 +224,8 @@ In order to allow withdrawals we add the following:
 Withdrawals are performed per crowdfunder and is their responsibility to claim the rewards. `_beneficiary` is the crowdfunder address and `_round` the appeal round they contributed to. For the sake of efficiency and simplicity, we also provide a method to withdraw from many rounds at once:
 
 ```js
-    function batchRoundWithdraw(address payable _beneficiary, uint256 _cursor, uint256 _count) external {
-        arbitrableStorage.withdrawRoundBatch(TX_ID, _beneficiary, _cursor, _count);
+    function batchWithdrawFeesAndRewards(address payable _beneficiary, uint256 _cursor, uint256 _count) external {
+        arbitrableStorage.batchWithdrawFeesAndRewards(TX_ID, _beneficiary, _cursor, _count);
     }
 ```
 
@@ -241,7 +247,7 @@ We are almost done! Let's finish our Escrow contract by adding some useful gette
 ```js
     function getRoundInfo(uint256 _round) external view returns (
             uint256[3] memory paidFees,
-            BinaryArbitrable.Party sideFunded,
+            uint256 rulingFunded,
             uint256 feeRewards,
             bool appealed
         ) {
@@ -259,8 +265,10 @@ We are almost done! Let's finish our Escrow contract by adding some useful gette
         return arbitrableStorage.getContributions(TX_ID, _round, _contributor);
     }
 
-    function amountWithdrawable(address _beneficiary) external view returns (uint256 total) {
-        total = arbitrableStorage.amountWithdrawable(TX_ID, _beneficiary);
+    function getTotalWithdrawableAmount(address _beneficiary) external view returns (uint256 total) {
+        uint256 totalRounds = arbitrableStorage.items[TX_ID].rounds.length;
+        for (uint256 roundI; roundI < totalRounds; roundI++)
+            total += arbitrableStorage.getWithdrawableAmount(TX_ID, _beneficiary, roundI);
     }
 ```
 

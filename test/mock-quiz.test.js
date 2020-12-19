@@ -316,14 +316,14 @@ describe('MockQuiz contract', async () => {
         .to.emit(contract, 'AppealContribution')
         .withArgs(
           questionId,
+          BigNumber.from(0),
           wrongAnswer,
           await crowdfunder1.getAddress(),
-          BigNumber.from(0),
           loserAppealFee
         )
       expect(txPromise1)
         .to.emit(contract, 'HasPaidAppealFee')
-        .withArgs(questionId, wrongAnswer, BigNumber.from(0))
+        .withArgs(questionId, BigNumber.from(0), wrongAnswer)
 
       // Fully fund the winner side
       const txPromise2 = contract
@@ -335,14 +335,14 @@ describe('MockQuiz contract', async () => {
         .to.emit(contract, 'AppealContribution')
         .withArgs(
           questionId,
+          BigNumber.from(0),
           correctAnswer,
           await crowdfunder2.getAddress(),
-          BigNumber.from(0),
           winnerAppealFee
         )
       expect(txPromise2)
         .to.emit(contract, 'HasPaidAppealFee')
-        .withArgs(questionId, correctAnswer, BigNumber.from(0))
+        .withArgs(questionId, BigNumber.from(0), correctAnswer)
 
       // Round zero must be updated correctly
       const totalRewards = winnerAppealFee + loserAppealFee - arbitrationFee
@@ -406,9 +406,9 @@ describe('MockQuiz contract', async () => {
         .to.emit(contract, 'AppealContribution')
         .withArgs(
           questionId,
+          BigNumber.from(0),
           wrongAnswer,
           await crowdfunder1.getAddress(),
-          BigNumber.from(0),
           contribution1
         )
       // Round zero must be updated correctly
@@ -437,14 +437,14 @@ describe('MockQuiz contract', async () => {
         .to.emit(contract, 'AppealContribution')
         .withArgs(
           questionId,
+          BigNumber.from(0),
           wrongAnswer,
           guestAddress,
-          BigNumber.from(0),
           expectedContribution2
         )
       expect(txPromise2)
         .to.emit(contract, 'HasPaidAppealFee')
-        .withArgs(questionId, wrongAnswer, BigNumber.from(0))
+        .withArgs(questionId, BigNumber.from(0), wrongAnswer)
       // Contributor must be refunded correctly
       const balanceAfterContribution2 = await guest.getBalance()
       expect(balanceBeforeContribution2).to.equal(
@@ -486,9 +486,9 @@ describe('MockQuiz contract', async () => {
         .to.emit(contract, 'AppealContribution')
         .withArgs(
           questionId,
+          BigNumber.from(0),
           correctAnswer,
           await crowdfunder2.getAddress(),
-          BigNumber.from(0),
           contribution3
         )
       // Round zero must be updated correctly
@@ -517,14 +517,14 @@ describe('MockQuiz contract', async () => {
         .to.emit(contract, 'AppealContribution')
         .withArgs(
           questionId,
+          BigNumber.from(0),
           correctAnswer,
           hostAddress,
-          BigNumber.from(0),
           expectedContribution4
         )
       expect(txPromise4)
         .to.emit(contract, 'HasPaidAppealFee')
-        .withArgs(questionId, correctAnswer, BigNumber.from(0))
+        .withArgs(questionId, BigNumber.from(0), correctAnswer)
       // Contributor must be refunded correctly
       const balanceAfterContribution4 = await host.getBalance()
       expect(balanceBeforeContribution4).to.equal(

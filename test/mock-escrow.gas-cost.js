@@ -421,7 +421,7 @@ describe('MockEscrow contract', async () => {
       // Batch-withdraw (checking if _cursor and _count arguments are working as expected).
       const txPromise = contract
         .connect(other)
-        .batchRoundWithdraw(
+        .batchWithdrawFeesAndRewards(
           await crowdfunder2.getAddress(),
           transactionId,
           ruleTransaction,
@@ -433,7 +433,7 @@ describe('MockEscrow contract', async () => {
 
       console.log('')
       console.log(
-        '\tGas used by batchRoundWithdraw():  ' + parseInt(receipt.gasUsed)
+        '\tGas used by batchWithdrawFeesAndRewards():  ' + parseInt(receipt.gasUsed)
       )
     })
   })
