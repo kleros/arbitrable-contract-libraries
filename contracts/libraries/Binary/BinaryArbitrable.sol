@@ -22,7 +22,7 @@ library BinaryArbitrable {
     enum Status {None, Disputed, Resolved}
 
     struct Round {
-        uint256[3] paidFees; // Tracks the fees paid by each ruling in this round.
+        uint256[3] paidFees; // Tracks the fees paid for each ruling in this round.
         uint256 rulingFunded; // {0, 1, 2} If the round is appealed, i.e. this is not the last round, 0 means that both rulings (1 and 2) have paid.
         uint256 feeRewards; // Sum of reimbursable fees and stake rewards available to the parties that made contributions to the ruling that ultimately wins a dispute.
         mapping(address => uint256[3]) contributions; // Maps contributors to their contributions for each ruling.
@@ -36,7 +36,7 @@ library BinaryArbitrable {
     }
 
     struct ArbitrableStorage {
-        IArbitrator arbitrator; // Address of the arbitrator contract. TRUSTED. Should only be set once.
+        IArbitrator arbitrator; // Address of the arbitrator contract. Should only be set once. TRUSTED.
         bytes arbitratorExtraData; // Extra data to set up the arbitration. Should only be set once.
         uint256 sharedStakeMultiplier; // Multiplier for calculating the appeal fee that must be paid by the submitter in the case where there is no winner or loser (e.g. when the arbitrator ruled "refuse to arbitrate").
         uint256 winnerStakeMultiplier; // Multiplier for calculating the appeal fee of the party that won the previous round.
@@ -48,22 +48,22 @@ library BinaryArbitrable {
     /* *** Events *** */
 
     /// @dev When a library function emits an event, Solidity requires the event to be defined both inside the library and in the contract where the library is used. Make sure that your arbitrable contract inherits the interfaces mentioned below in order to comply with this (IArbitrable, IEvidence and IAppealEvents).
-    /// @dev See {@kleros/erc-792/contracts/IArbitrable.sol}
+    /// @dev See {@kleros/erc-792/contracts/IArbitrable.sol}.
     event Ruling(IArbitrator indexed _arbitrator, uint256 indexed _disputeID, uint256 _ruling);
 
-    /// @dev See {@kleros/erc-792/contracts/erc-1497/IEvidence.sol}
+    /// @dev See {@kleros/erc-792/contracts/erc-1497/IEvidence.sol}.
     event Evidence(IArbitrator indexed _arbitrator, uint256 indexed _evidenceGroupID, address indexed _party, string _evidence);
 
-    /// @dev See {@kleros/erc-792/contracts/erc-1497/IEvidence.sol}
+    /// @dev See {@kleros/erc-792/contracts/erc-1497/IEvidence.sol}.
     event Dispute(IArbitrator indexed _arbitrator, uint256 indexed _disputeID, uint256 _metaEvidenceID, uint256 _evidenceGroupID);
 
-    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}
+    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}.
     event HasPaidAppealFee(uint256 indexed _itemID, uint256 _round, uint256 indexed _ruling);
 
-    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}
+    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}.
     event AppealContribution(uint256 indexed _itemID, uint256 _round, uint256 indexed _ruling, address indexed _contributor, uint256 _amount);
 
-    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}
+    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}.
     event Withdrawal(uint256 indexed _itemID, uint256 indexed _round, uint256 _ruling, address indexed _contributor, uint256 _reward);
 
     // **************************** //
@@ -87,7 +87,7 @@ library BinaryArbitrable {
     }
 
     /** @dev Sets the arbitrator data. Can only be set once.
-     *  @param _arbitrator The address of the arbitrator contract the is going to be used for every dispute created.
+     *  @param _arbitrator The address of the arbitrator contract that is going to be used for every dispute created.
      *  @param _arbitratorExtraData The extra data for the arbitrator.
      */
     function setArbitrator(
@@ -101,7 +101,7 @@ library BinaryArbitrable {
         self.arbitratorExtraData = _arbitratorExtraData;
     }
 
-    /** @dev Invokes the arbitrator to create a dispute. Requires _arbitrationCost ETH. It's the arbitrable contract responsability to make sure the amount of ETH available in the contract is enough.
+    /** @dev Invokes the arbitrator to create a dispute. Requires _arbitrationCost ETH. It's the arbitrable contract's responsability to make sure the amount of ETH available in the contract is enough.
      *  @param _itemID The ID of the disputable item.
      *  @param _arbitrationCost Value in wei, as defined in getArbitrationCost(), that is needed to create a dispute. 
      *  @param _metaEvidenceID The ID of the meta-evidence of the dispute as defined in the ERC-1497 standard.
@@ -341,7 +341,8 @@ library BinaryArbitrable {
      *  @dev Calculates the appeal fee and total cost for an arbitration.
      *  @param _itemID The ID of the disputed item.
      *  @param _ruling The ruling to which the contribution is made.
-     *  @return appealCost The appeal fee charged by the arbitrator.  @return totalCost The total cost for appealing.
+     *  @return appealCost The appeal fee charged by the arbitrator.  
+     *  @return totalCost The total cost for appealing.
     */
     function getAppealFeeComponents(
         ArbitrableStorage storage self,

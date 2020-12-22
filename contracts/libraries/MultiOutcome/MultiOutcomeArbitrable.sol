@@ -34,7 +34,7 @@ library MultiOutcomeArbitrable {
     }
 
     struct ArbitrableStorage {
-        IArbitrator arbitrator; // Address of the arbitrator contract. TRUSTED.
+        IArbitrator arbitrator; // Address of the arbitrator contract. Should only be set once. TRUSTED.
         bytes arbitratorExtraData; // Extra data to set up the arbitration.     
         uint256 sharedStakeMultiplier; // Multiplier for calculating the appeal fee that must be paid by the submitter in the case where there is no winner or loser (e.g. when the arbitrator ruled "refuse to arbitrate").
         uint256 winnerStakeMultiplier; // Multiplier for calculating the appeal fee of the party that won the previous round.
@@ -46,22 +46,22 @@ library MultiOutcomeArbitrable {
     /* *** Events *** */
 
     /// @dev When a library function emits an event, Solidity requires the event to be defined both inside the library and in the contract where the library is used. Make sure that your arbitrable contract inherits the interfaces mentioned below in order to comply with this (IArbitrable, IEvidence and IAppealEvents).
-    /// @dev See {@kleros/erc-792/contracts/IArbitrable.sol}
+    /// @dev See {@kleros/erc-792/contracts/IArbitrable.sol}.
     event Ruling(IArbitrator indexed _arbitrator, uint256 indexed _disputeID, uint256 _ruling);
 
-    /// @dev See {@kleros/erc-792/contracts/erc-1497/IEvidence.sol}
+    /// @dev See {@kleros/erc-792/contracts/erc-1497/IEvidence.sol}.
     event Evidence(IArbitrator indexed _arbitrator, uint256 indexed _evidenceGroupID, address indexed _party, string _evidence);
 
-    /// @dev See {@kleros/erc-792/contracts/erc-1497/IEvidence.sol}
+    /// @dev See {@kleros/erc-792/contracts/erc-1497/IEvidence.sol}.
     event Dispute(IArbitrator indexed _arbitrator, uint256 indexed _disputeID, uint256 _metaEvidenceID, uint256 _evidenceGroupID);
 
-    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}
+    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}.
     event HasPaidAppealFee(uint256 indexed _itemID, uint256 _round, uint256 indexed _ruling);
 
-    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}
+    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}.
     event AppealContribution(uint256 indexed _itemID, uint256 _round, uint256 indexed _ruling, address indexed _contributor, uint256 _amount);
 
-    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}
+    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}.
     event Withdrawal(uint256 indexed _itemID, uint256 indexed _round, uint256 _ruling, address indexed _contributor, uint256 _reward);
 
     // **************************** //
@@ -429,7 +429,7 @@ library MultiOutcomeArbitrable {
 
     /** @dev Gets the final ruling if the dispute is resolved.
      *  @param _itemID The ID of the disputed item.
-     *  @return The ruling the won the dispute.
+     *  @return The ruling that won the dispute.
      */
     function getFinalRuling(ArbitrableStorage storage self, uint256 _itemID) internal view returns(uint256) {
         ItemData storage item = self.items[_itemID];
