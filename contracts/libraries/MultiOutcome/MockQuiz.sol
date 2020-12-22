@@ -266,7 +266,7 @@ contract MockQuiz is IArbitrable, IEvidence, IAppealEvents {
      */
     function rule(uint256 _disputeID, uint256 _ruling) external override {
         uint256 finalAnswer = arbitrableStorage.processRuling(_disputeID, _ruling);
-        uint256 questionID = arbitrableStorage.disputeIDtoItemID[_disputeID];
+        uint256 questionID = arbitrableStorage.externalIDtoLocalID[_disputeID];
         Question storage question = questions[questionID];
         question.status = Status.Resolved;
 
@@ -306,9 +306,9 @@ contract MockQuiz is IArbitrable, IEvidence, IAppealEvents {
         address _beneficiary,
         uint256 _answer
     ) external view returns (uint256 total) {
-        if (arbitrableStorage.items[_questionID].status != MultiOutcomeArbitrable.Status.Resolved) return total;
+        if (arbitrableStorage.disputes[_questionID].status != MultiOutcomeArbitrable.Status.Resolved) return total;
 
-        uint256 totalRounds = arbitrableStorage.items[_questionID].rounds.length;
+        uint256 totalRounds = arbitrableStorage.disputes[_questionID].rounds.length;
         for (uint256 roundI; roundI < totalRounds; roundI++)
             total += arbitrableStorage.getWithdrawableAmount(_questionID, _beneficiary, roundI, _answer);
     }

@@ -409,7 +409,7 @@ contract Linguo is IArbitrable, IEvidence, IAppealEvents {
      *  @param _disputeID ID of the dispute in the Arbitrator contract.
      */
     function executeRuling(uint256 _disputeID, Party _finalRuling) internal {
-        uint256 taskID = arbitrableStorage.disputeIDtoItemID[_disputeID];
+        uint256 taskID = arbitrableStorage.externalIDtoLocalID[_disputeID];
         Task storage task = tasks[taskID];
         task.status = Status.Resolved;
         uint256 amount;
@@ -454,7 +454,7 @@ contract Linguo is IArbitrable, IEvidence, IAppealEvents {
      *  @return total The total amount of wei available to withdraw.
      */
     function getTotalWithdrawableAmount(uint256 _taskID, address _beneficiary) external view returns (uint256 total) {
-        uint256 totalRounds = arbitrableStorage.items[_taskID].rounds.length;
+        uint256 totalRounds = arbitrableStorage.disputes[_taskID].rounds.length;
         for (uint256 roundI; roundI < totalRounds; roundI++)
             total += arbitrableStorage.getWithdrawableAmount(_taskID, _beneficiary, roundI);
     }

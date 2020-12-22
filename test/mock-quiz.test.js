@@ -161,7 +161,7 @@ describe('MockQuiz contract', async () => {
       await expect(contract
         .connect(host)
         .challengeAnswer(questionId, correctAnswer, correctEvidence, { value: arbitrationFee })
-      ).to.be.revertedWith('Item already disputed.')
+      ).to.be.revertedWith('Dispute already created.')
     })
 
     it('Should handle multiple dispute at the same', async () => {

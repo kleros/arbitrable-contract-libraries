@@ -63,7 +63,7 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
     }
 
     function reclaimFunds() public payable {
-        BinaryArbitrable.Status disputeStatus = arbitrableStorage.items[TX_ID].status;
+        BinaryArbitrable.Status disputeStatus = arbitrableStorage.disputes[TX_ID].status;
         require(disputeStatus == BinaryArbitrable.Status.None, "Dispute has already been created.");
         require(status != Status.Resolved, "Transaction is already resolved.");
         require(msg.sender == payer, "Only the payer can reclaim the funds.");
@@ -135,7 +135,7 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
 
     function remainingTimeToDepositArbitrationFee() public view returns (uint256) {
         require(status == Status.Reclaimed, "Transaction is not in Reclaimed state.");
-        BinaryArbitrable.Status disputeStatus = arbitrableStorage.items[TX_ID].status;
+        BinaryArbitrable.Status disputeStatus = arbitrableStorage.disputes[TX_ID].status;
         require(disputeStatus == BinaryArbitrable.Status.None, "Dispute has already been created.");
 
         return
@@ -169,7 +169,7 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
     }
 
     function getTotalWithdrawableAmount(address _beneficiary) external view returns (uint256 total) {
-        uint256 totalRounds = arbitrableStorage.items[TX_ID].rounds.length;
+        uint256 totalRounds = arbitrableStorage.disputes[TX_ID].rounds.length;
         for (uint256 roundI; roundI < totalRounds; roundI++)
             total += arbitrableStorage.getWithdrawableAmount(TX_ID, _beneficiary, roundI);
     }
