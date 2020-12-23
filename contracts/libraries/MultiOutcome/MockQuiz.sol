@@ -215,48 +215,33 @@ contract MockQuiz is IArbitrable, IEvidence, IAppealEvents {
     /** @dev Withdraws contributions of appeal rounds. Reimburses contributions if funding was unsuccessful. If a dispute was raised, sends the fee stake rewards and reimbursements proportional to the contributions made to the winner of a dispute.
      *  @param _beneficiary The address that made contributions.
      *  @param _questionID The ID of the associated question.
-     *  @param _answer The answer that pays the appeal fee.
      *  @param _round The round from which to withdraw.
+     *  @param _answer The answer that pays the appeal fee.
      */
     function withdrawFeesAndRewards(
         address payable _beneficiary,
         uint256 _questionID,
-        uint256 _answer,
-        uint256 _round
+        uint256 _round,
+        uint256 _answer
     ) public {
-        arbitrableStorage.withdrawFeesAndRewards(_questionID, _beneficiary, _answer, _round);
+        arbitrableStorage.withdrawFeesAndRewards(_questionID, _beneficiary, _round, _answer);
     }
 
     /** @dev Withdraws contributions of multiple appeal rounds at once. This function is O(n) where n is the number of rounds. This could exceed the gas limit, therefore this function should be used only as a utility and not be relied upon by other contracts.
      *  @param _beneficiary The address that made contributions.
      *  @param _questionID The ID of the associated question.
-     *  @param _answer The answer that pays the appeal fee.
      *  @param _cursor The round from where to start withdrawing.
      *  @param _count The number of rounds to iterate. If set to 0 or a value larger than the number of rounds, iterates until the last round.
+     *  @param _answer The answer that pays the appeal fee.
      */
-    function batchRoundWithdraw(
+    function batchWithdrawFeesAndRewards(
         address payable _beneficiary,
         uint256 _questionID,
-        uint256 _answer,
         uint256 _cursor,
-        uint256 _count
+        uint256 _count,
+        uint256 _answer
     ) public {
-        arbitrableStorage.withdrawRoundBatch(_questionID, _beneficiary, _answer, _cursor, _count);
-    }
-
-    /** @dev Withdraws contributions of multiple appeal rounds at once. This function is O(n) where n is the number of rounds. This could exceed the gas limit, therefore this function should be used only as a utility and not be relied upon by other contracts.
-     *  @param _beneficiary The address that made contributions.
-     *  @param _questionID The ID of the associated question.
-     *  @param _answers The answers that pays the appeal fee.
-     *  @param _round The round from which to withdraw.
-     */
-    function withdrawMultipleRulings(
-        address payable _beneficiary,
-        uint256 _questionID,
-        uint256[] memory _answers,
-        uint256 _round
-    ) public {
-        arbitrableStorage.withdrawMultipleRulings(_questionID, _beneficiary, _answers, _round);
+        arbitrableStorage.batchWithdrawFeesAndRewards(_questionID, _beneficiary, _cursor, _count, _answer);
     }
 
     /** @dev Gives the ruling for a dispute. Can only be called by the arbitrator.
@@ -332,29 +317,32 @@ contract MockQuiz is IArbitrable, IEvidence, IAppealEvents {
      *  @param _questionID The ID of the question.
      *  @param _round The position of the round.
      *  @param _contributor The address of the contributor.
-     *  @return answersFunded contributions The answers currently funded and their respective contributions.
+     *  @param _answer The answer that pays the appeal fee.
+     *  @return contribution made by _contributor.
+     *  @return rulingContributions sum of all contributions to _ruling.
      */
-    function getContributions(
+    function getContribution(
         uint256 _questionID,
         uint256 _round,
-        address _contributor
-    ) public view returns (uint256[2] memory answersFunded, uint256[2] memory contributions) {
-        return arbitrableStorage.getContributionsToSuccessfulFundings(_questionID, _round, _contributor);
+        address _contributor,
+        uint256 _answer
+    ) public view returns (uint256 contribution, uint256 rulingContributions) {
+        return arbitrableStorage.getContribution(_questionID, _round, _contributor, _answer);
     }
 
     /** @dev Gets the information on a round of a question.
      *  @param _questionID The ID of the question.
      *  @param _round The round to be queried.
-     *  @return paidFees sideFunded feeRewards appealed The round information.
+     *  @return rulingFunded feeRewards appealCostPaid appealed The round information.
      */
     function getRoundInfo(uint256 _questionID, uint256 _round)
         public
         view
         returns (
-            uint256[2] memory paidFees,
-            uint256[2] memory answersFunded,
-            uint256 feeRewards,
-            bool appealed
+        uint256 rulingFunded,
+        uint256 feeRewards,
+        uint256 appealCostPaid,
+        bool appealed
         )
     {
         return arbitrableStorage.getRoundInfo(_questionID, _round);

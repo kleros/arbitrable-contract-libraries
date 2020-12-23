@@ -278,9 +278,9 @@ describe('MockQuiz contract', async () => {
       const winnerAppealFee =
         arbitrationFee +
         (arbitrationFee * winnerMultiplier) / MULTIPLIER_DIVISOR
-      let paidFees
-      let answersFunded
+      let answerFunded
       let feeRewards
+      let appealCostPaid
       let appealed
 
       const [
@@ -292,16 +292,14 @@ describe('MockQuiz contract', async () => {
 
       // Round zero must be created but empty
       ;[
-        paidFees,
-        answersFunded,
+        answerFunded,
         feeRewards,
+        appealCostPaid,
         appealed
       ] = await contract.getRoundInfo(questionId, 0)
-      expect(paidFees[0].toNumber()).to.be.equal(0, 'Wrong paidFee for ruling at position 0')
-      expect(paidFees[1].toNumber()).to.be.equal(0, 'Wrong paidFee for ruling at position 1')
-      expect(answersFunded[0]).to.be.equal(0, 'Wrong ruling funded')
-      expect(answersFunded[1]).to.be.equal(0, 'Wrong ruling funded')
+      expect(answerFunded).to.be.equal(0, 'Wrong ruling funded')
       expect(appealed).to.be.equal(false, 'Wrong round info: appealed')
+      expect(appealCostPaid).to.be.equal(0, 'Wrong round info: appealCostPaid')
       expect(feeRewards.toNumber()).to.be.equal(0, 'Wrong feeRewards')
 
       await giveRulingHelper(exptectedDisputeID, correctAnswer)
@@ -347,30 +345,26 @@ describe('MockQuiz contract', async () => {
       // Round zero must be updated correctly
       const totalRewards = winnerAppealFee + loserAppealFee - arbitrationFee
       ;[
-        paidFees,
-        answersFunded,
+        answerFunded,
         feeRewards,
+        appealCostPaid,
         appealed
       ] = await contract.getRoundInfo(questionId, 0)
-      expect(paidFees[0].toNumber()).to.be.equal(loserAppealFee, 'Wrong paidFee for party Guest')
-      expect(paidFees[1].toNumber()).to.be.equal(winnerAppealFee, 'Wrong paidFee for party Host')
-      expect(answersFunded[0]).to.be.equal(wrongAnswer, 'Wrong ruling funded')
-      expect(answersFunded[1]).to.be.equal(correctAnswer, 'Wrong ruling funded')
+      expect(answerFunded).to.be.equal(0, 'Wrong ruling funded')
       expect(appealed).to.be.equal(true, 'Wrong round info: appealed')
+      expect(appealCostPaid).to.be.equal(arbitrationFee, 'Wrong round info: appealCostPaid')
       expect(feeRewards.toNumber()).to.be.equal(totalRewards, 'Wrong feeRewards')
 
       // Round one must be created but empty
       ;[
-        paidFees,
-        answersFunded,
+        answerFunded,
         feeRewards,
+        appealCostPaid,
         appealed
       ] = await contract.getRoundInfo(questionId, 1)
-      expect(paidFees[0].toNumber()).to.be.equal(0, 'Wrong paidFee for ruling at position 0')
-      expect(paidFees[1].toNumber()).to.be.equal(0, 'Wrong paidFee for ruling at position 1')
-      expect(answersFunded[0]).to.be.equal(0, 'Wrong ruling funded')
-      expect(answersFunded[1]).to.be.equal(0, 'Wrong ruling funded')
+      expect(answerFunded).to.be.equal(0, 'Wrong ruling funded')
       expect(appealed).to.be.equal(false, 'Wrong round info: appealed')
+      expect(appealCostPaid).to.be.equal(0, 'Wrong round info: appealCostPaid')
       expect(feeRewards.toNumber()).to.be.equal(0, 'Wrong feeRewards')
     })
 
@@ -381,9 +375,9 @@ describe('MockQuiz contract', async () => {
         arbitrationFee +
         (arbitrationFee * winnerMultiplier) / MULTIPLIER_DIVISOR
       const gasPrice = 1000000000
-      let paidFees
-      let answersFunded
+      let answerFunded
       let feeRewards
+      let appealCostPaid
       let appealed
 
       const [
@@ -413,17 +407,15 @@ describe('MockQuiz contract', async () => {
         )
       // Round zero must be updated correctly
       ;[
-        paidFees,
-        answersFunded,
+        answerFunded,
         feeRewards,
+        appealCostPaid,
         appealed
       ] = await contract.getRoundInfo(questionId, 0)
-      expect(paidFees[0].toNumber()).to.be.equal(0, 'Wrong paidFee for party Guest')
-      expect(paidFees[1].toNumber()).to.be.equal(0, 'Wrong paidFee for party Host')
-      expect(answersFunded[0]).to.be.equal(0, 'Wrong ruling funded')
-      expect(answersFunded[1]).to.be.equal(0, 'Wrong ruling funded')
+      expect(answerFunded).to.be.equal(0, 'Wrong ruling funded')
       expect(appealed).to.be.equal(false, 'Wrong round info: appealed')
-      expect(feeRewards.toNumber()).to.be.equal(0, 'Wrong feeRewards')
+      expect(appealCostPaid).to.be.equal(0, 'Wrong round info: appealCostPaid')
+      expect(feeRewards.toNumber()).to.be.equal(contribution1, 'Wrong feeRewards')
 
       // Overpay fee and check if contributor is refunded
       const balanceBeforeContribution2 = await guest.getBalance()
@@ -455,17 +447,15 @@ describe('MockQuiz contract', async () => {
       )
       // Round zero must be updated correctly
       ;[
-        paidFees,
-        answersFunded,
+        answerFunded,
         feeRewards,
+        appealCostPaid,
         appealed
       ] = await contract.getRoundInfo(questionId, 0)
-      expect(paidFees[0].toNumber()).to.be.equal(loserAppealFee, 'Wrong paidFee for party Guest')
-      expect(paidFees[1].toNumber()).to.be.equal(0, 'Wrong paidFee for party Host')
-      expect(answersFunded[0]).to.be.equal(wrongAnswer, 'Wrong ruling funded')
-      expect(answersFunded[1]).to.be.equal(0, 'Wrong ruling funded')
+      expect(answerFunded).to.be.equal(wrongAnswer, 'Wrong ruling funded')
       expect(appealed).to.be.equal(false, 'Wrong round info: appealed')
-      expect(feeRewards.toNumber()).to.be.equal(0, 'Wrong feeRewards')
+      expect(appealCostPaid).to.be.equal(0, 'Wrong round info: appealCostPaid')
+      expect(feeRewards.toNumber()).to.be.equal(loserAppealFee, 'Wrong feeRewards')
 
       // The side is fully funded and new contributions must be reverted
       await expect(
@@ -493,17 +483,15 @@ describe('MockQuiz contract', async () => {
         )
       // Round zero must be updated correctly
       ;[
-        paidFees,
-        answersFunded,
+        answerFunded,
         feeRewards,
+        appealCostPaid,
         appealed
       ] = await contract.getRoundInfo(questionId, 0)
-      expect(paidFees[0].toNumber()).to.be.equal(loserAppealFee, 'Wrong paidFee for party Guest')
-      expect(paidFees[1].toNumber()).to.be.equal(0, 'Wrong paidFee for party Host')
-      expect(answersFunded[0]).to.be.equal(wrongAnswer, 'Wrong ruling funded')
-      expect(answersFunded[1]).to.be.equal(0, 'Wrong ruling funded')
+      expect(answerFunded).to.be.equal(wrongAnswer, 'Wrong ruling funded')
       expect(appealed).to.be.equal(false, 'Wrong round info: appealed')
-      expect(feeRewards.toNumber()).to.be.equal(0, 'Wrong feeRewards')
+      expect(appealCostPaid).to.be.equal(0, 'Wrong round info: appealCostPaid')
+      expect(feeRewards.toNumber()).to.be.equal(BigNumber.from(loserAppealFee + contribution3), 'Wrong feeRewards')
 
       // Overpay fee and check if contributor is refunded
       const balanceBeforeContribution4 = await host.getBalance()
@@ -536,16 +524,14 @@ describe('MockQuiz contract', async () => {
       // Round zero must be updated correctly
       const totalRewards = loserAppealFee + winnerAppealFee - arbitrationFee
       ;[
-        paidFees,
-        answersFunded,
+        answerFunded,
         feeRewards,
+        appealCostPaid,
         appealed
       ] = await contract.getRoundInfo(questionId, 0)
-      expect(paidFees[0].toNumber()).to.be.equal(loserAppealFee, 'Wrong paidFee for party Guest')
-      expect(paidFees[1].toNumber()).to.be.equal(winnerAppealFee, 'Wrong paidFee for party Host')
-      expect(answersFunded[0]).to.be.equal(wrongAnswer, 'Wrong ruling funded')
-      expect(answersFunded[1]).to.be.equal(correctAnswer, 'Wrong ruling funded')
+      expect(answerFunded).to.be.equal(0, 'Wrong ruling funded')
       expect(appealed).to.be.equal(true, 'Wrong round info: appealed')
+      expect(appealCostPaid).to.be.equal(arbitrationFee, 'Wrong round info: appealCostPaid')
       expect(feeRewards.toNumber()).to.be.equal(totalRewards, 'Wrong feeRewards')
     })
 
@@ -604,17 +590,12 @@ describe('MockQuiz contract', async () => {
       await expect(
         contract
           .connect(crowdfunder1)
-          .withdrawFeesAndRewards(await crowdfunder1.getAddress(), questionId, wrongAnswer, 0)
+          .withdrawFeesAndRewards(await crowdfunder1.getAddress(), questionId, 0, wrongAnswer)
       ).to.be.revertedWith('Dispute not resolved.')
       await expect(
         contract
           .connect(crowdfunder1)
-          .batchRoundWithdraw(await crowdfunder1.getAddress(), questionId, wrongAnswer, 0, 0)
-      ).to.be.revertedWith('Dispute not resolved.')
-      await expect(
-        contract
-          .connect(crowdfunder1)
-          .withdrawMultipleRulings(await crowdfunder1.getAddress(), questionId, [correctAnswer, wrongAnswer], 0)
+          .batchWithdrawFeesAndRewards(await crowdfunder1.getAddress(), questionId, 0, 0, wrongAnswer)
       ).to.be.revertedWith('Dispute not resolved.')
 
       // Crowdfund the host side (crowdfunder1 funds both sides)
@@ -629,15 +610,18 @@ describe('MockQuiz contract', async () => {
       const appealDisputeID = await arbitrator.getAppealDisputeID(exptectedDisputeID)
       await giveFinalRulingHelper(appealDisputeID, correctAnswer, exptectedDisputeID)
 
+      const [
+        contribution,
+        correctContributions
+      ] = await contract.getContribution(questionId, 0, await crowdfunder1.getAddress(), correctAnswer)
+
       const balancesBefore = await getBalances()
-      await withdrawHelper(await crowdfunder1.getAddress(), questionId, wrongAnswer, 0, other) // Should withdraw 0
-      await withdrawHelper(await crowdfunder1.getAddress(), questionId, correctAnswer, 0, other)
-      await withdrawHelper(await crowdfunder2.getAddress(), questionId, correctAnswer, 0, other)
-      await withdrawHelper(await crowdfunder2.getAddress(), questionId, correctAnswer, 0, other) // Attempt to withdraw twice
-      await withdrawHelper(await crowdfunder2.getAddress(), questionId, correctAnswer, 1, other) // Should withdraw 0
-      await withdrawHelper(hostAddress, questionId, correctAnswer, 0, other) // Should withdraw 0
-      const manyRulings = [BigNumber.from(0), BigNumber.from(123456), correctAnswer, wrongAnswer]
-      await contract.connect(other).withdrawMultipleRulings(guestAddress, questionId, manyRulings, 0) // Should withdraw 0
+      await withdrawHelper(await crowdfunder1.getAddress(), questionId, 0, wrongAnswer, other) // Should withdraw 0
+      await withdrawHelper(await crowdfunder1.getAddress(), questionId, 0, correctAnswer, other)
+      await withdrawHelper(await crowdfunder2.getAddress(), questionId, 0, correctAnswer, other)
+      await withdrawHelper(await crowdfunder2.getAddress(), questionId, 0, correctAnswer, other) // Attempt to withdraw twice
+      await withdrawHelper(await crowdfunder2.getAddress(), questionId, 1, correctAnswer, other) // Should withdraw 0
+      await withdrawHelper(hostAddress, questionId, 0, correctAnswer, other) // Should withdraw 0
       const balancesAfter = await getBalances()
 
       expect(balancesBefore.guest).to.equal(
@@ -648,24 +632,23 @@ describe('MockQuiz contract', async () => {
         balancesAfter.host,
         'Non contributors must not be rewarded'
       )
+
       const [
-        paidFees,
-        _answersFunded,
+        _answerFunded,
         feeRewards,
+        _appealCostPaid,
         _appealed
       ] = await contract.getRoundInfo(questionId, 0)
-      const reward3 = BigNumber.from(contribution3)
+      const reward3 = BigNumber.from(contribution)
         .mul(feeRewards)
-        .div(paidFees[1])
+        .div(correctContributions)
       expect(balancesBefore.crowdfunder1.add(reward3)).to.equal(
         balancesAfter.crowdfunder1,
         'Contributor 1 was not rewarded correctly'
       )
 
-      const reward4 = BigNumber.from(contribution4)
-        .mul(feeRewards)
-        .div(paidFees[1])
-      expect(balancesBefore.crowdfunder2.add(reward4)).to.equal(
+      // Both contributed the same amount
+      expect(balancesBefore.crowdfunder2.add(reward3)).to.equal(
         balancesAfter.crowdfunder2,
         'Contributor 2 was not rewarded correctly'
       )
@@ -706,14 +689,13 @@ describe('MockQuiz contract', async () => {
       await giveFinalRulingHelper(appealDisputeID, BigNumber.from(0), exptectedDisputeID)
 
       const balancesBefore = await getBalances()
-      await withdrawHelper(await crowdfunder1.getAddress(), questionId, wrongAnswer, 0, other) // Should withdraw correctAnswer contribution too
-      await withdrawHelper(await crowdfunder1.getAddress(), questionId, correctAnswer, 0, other) // Should withdraw 0
-      await withdrawHelper(await crowdfunder2.getAddress(), questionId, correctAnswer, 0, other)
-      await withdrawHelper(await crowdfunder2.getAddress(), questionId, correctAnswer, 0, other) // Attempt to withdraw twice
-      await withdrawHelper(await crowdfunder2.getAddress(), questionId, correctAnswer, 1, other) // Should withdraw 0
-      await withdrawHelper(hostAddress, questionId, correctAnswer, 0, other) // Should withdraw 0
-      const manyRulings = [BigNumber.from(0), BigNumber.from(123456), correctAnswer, wrongAnswer]
-      await contract.connect(other).withdrawMultipleRulings(guestAddress, questionId, manyRulings, 0) // Should withdraw wrongAnswer contribution
+      await withdrawHelper(await crowdfunder1.getAddress(), questionId, 0, wrongAnswer, other) // Should withdraw correctAnswer contribution too
+      await withdrawHelper(await crowdfunder1.getAddress(), questionId, 0, correctAnswer, other) // Should withdraw 0
+      await withdrawHelper(await crowdfunder2.getAddress(), questionId, 0, correctAnswer, other)
+      await withdrawHelper(await crowdfunder2.getAddress(), questionId, 0, correctAnswer, other) // Attempt to withdraw twice
+      await withdrawHelper(await crowdfunder2.getAddress(), questionId, 1, correctAnswer, other) // Should withdraw 0
+      await withdrawHelper(hostAddress, questionId, 0, correctAnswer, other) // Should withdraw 0
+      await withdrawHelper(guestAddress, questionId, 0, wrongAnswer, other) // Should withdraw 0
       const balancesAfter = await getBalances()
 
       expect(balancesBefore.host).to.equal(
@@ -721,12 +703,12 @@ describe('MockQuiz contract', async () => {
         'Non contributors must not be rewarded'
       )
       const [
-        paidFees,
-        _answersFunded,
+        _answerFunded,
         feeRewards,
+        appealCostPaid,
         _appealed
       ] = await contract.getRoundInfo(questionId, 0)
-      const totalFeesPaid = paidFees[1].add(paidFees[0])
+      const totalFeesPaid = feeRewards.add(appealCostPaid)
 
       const reward2 = BigNumber.from(contribution2)
         .mul(feeRewards)
@@ -759,8 +741,8 @@ describe('MockQuiz contract', async () => {
       const winnerAppealFee =
         arbitrationFee +
         (arbitrationFee * winnerMultiplier) / MULTIPLIER_DIVISOR
-      let answersFunded
-      let contributions
+      let contribution
+      let rulingContributions
 
       const [
         _receipt,
@@ -778,13 +760,11 @@ describe('MockQuiz contract', async () => {
       await fundAppealHelper(questionId, guest, contribution2, wrongAnswer)
 
       ;[
-        answersFunded,
-        contributions
-      ] = await contract.getContributions(questionId, 0, await crowdfunder1.getAddress())
-      expect(answersFunded[0]).to.equal(wrongAnswer, 'Wrong answer funded')
-      expect(answersFunded[1]).to.equal(BigNumber.from(0), 'Wrong answer funded')
-      expect(contributions[0]).to.equal(BigNumber.from(contribution1), 'Wrong contribution registered')
-      expect(contributions[1]).to.equal(BigNumber.from(0), 'Wrong contribution registered')
+        contribution,
+        rulingContributions
+      ] = await contract.getContribution(questionId, 0, await crowdfunder1.getAddress(), wrongAnswer)
+      expect(contribution).to.equal(BigNumber.from(contribution1), 'Wrong contribution registered')
+      expect(rulingContributions).to.equal(BigNumber.from(loserAppealFee), 'Wrong contribution registered')
 
       // Crowdfund the host side (crowdfunder1 funds both sides)
       const contribution3 = winnerAppealFee / 2
@@ -795,29 +775,25 @@ describe('MockQuiz contract', async () => {
       await fundAppealHelper(questionId, crowdfunder2, contribution4 / 2, correctAnswer)
 
       ;[
-        answersFunded,
-        contributions
-      ] = await contract.getContributions(questionId, 0, await crowdfunder1.getAddress())
-      expect(answersFunded[0]).to.equal(wrongAnswer, 'Wrong answer funded')
-      expect(answersFunded[1]).to.equal(correctAnswer, 'Wrong answer funded')
-      expect(contributions[0]).to.equal(BigNumber.from(contribution1), 'Wrong contribution registered')
-      expect(contributions[1]).to.equal(BigNumber.from(contribution3), 'Wrong contribution registered')
+        contribution,
+        rulingContributions
+      ] = await contract.getContribution(questionId, 0, await crowdfunder2.getAddress(), correctAnswer)
+      expect(contribution).to.equal(BigNumber.from(contribution4), 'Wrong contribution registered')
+      expect(rulingContributions).to.equal(BigNumber.from(winnerAppealFee), 'Wrong contribution registered')
 
       // Give and execute final ruling, then withdraw
       const appealDisputeID = await arbitrator.getAppealDisputeID(exptectedDisputeID)
       await giveFinalRulingHelper(appealDisputeID, correctAnswer, exptectedDisputeID)
 
-      await withdrawHelper(await crowdfunder1.getAddress(), questionId, correctAnswer, 0, other)
-      await withdrawHelper(await crowdfunder2.getAddress(), questionId, correctAnswer, 0, other)
+      await withdrawHelper(await crowdfunder1.getAddress(), questionId, 0, correctAnswer, other)
+      await withdrawHelper(await crowdfunder2.getAddress(), questionId, 0, correctAnswer, other)
 
       ;[
-        answersFunded,
-        contributions
-      ] = await contract.getContributions(questionId, 0, await crowdfunder1.getAddress())
-      expect(answersFunded[0]).to.equal(wrongAnswer, 'Wrong answer funded')
-      expect(answersFunded[1]).to.equal(correctAnswer, 'Wrong answer funded')
-      expect(contributions[0]).to.equal(BigNumber.from(contribution1), 'Wrong contribution registered')
-      expect(contributions[1]).to.equal(BigNumber.from(0), 'Wrong contribution registered')
+        contribution,
+        rulingContributions
+      ] = await contract.getContribution(questionId, 0, await crowdfunder1.getAddress(), correctAnswer)
+      expect(contribution).to.equal(BigNumber.from(0), 'Wrong contribution registered')
+      expect(rulingContributions).to.equal(BigNumber.from(winnerAppealFee), 'Wrong contribution registered')
 
     })
 
@@ -866,17 +842,22 @@ describe('MockQuiz contract', async () => {
         correctAnswer
       )
 
+      const [
+        contribution,
+        correctContributions
+      ] = await contract.getContribution(questionId, 0, await crowdfunder2.getAddress(), correctAnswer)
+
       const tx1 = await contract
         .connect(other)
-        .batchRoundWithdraw(await crowdfunder1.getAddress(), questionId, wrongAnswer, 0, 0)
+        .batchWithdrawFeesAndRewards(await crowdfunder1.getAddress(), questionId, 0, 0, wrongAnswer)
       await tx1.wait()
       const tx2 = await contract
         .connect(other)
-        .batchRoundWithdraw(await crowdfunder2.getAddress(), questionId, correctAnswer, 0, 2)
+        .batchWithdrawFeesAndRewards(await crowdfunder2.getAddress(), questionId, 0, 2, correctAnswer)
       await tx2.wait()
       const tx3 = await contract
         .connect(other)
-        .batchRoundWithdraw(await crowdfunder2.getAddress(), questionId, correctAnswer, 0, 10)
+        .batchWithdrawFeesAndRewards(await crowdfunder2.getAddress(), questionId, 0, 10, correctAnswer)
       await tx3.wait()
 
       const balancesAfter = await getBalances()
@@ -892,15 +873,15 @@ describe('MockQuiz contract', async () => {
 
       // In this case all rounds have equal fees and rewards to simplify calculations
       const [
-        paidFees,
-        _answersFunded,
+        _answerFunded,
         feeRewards,
+        _appealCostPaid,
         _appealed
       ] = await contract.getRoundInfo(questionId, 0)
 
-      const roundReward = BigNumber.from(winnerAppealFee)
+      const roundReward = BigNumber.from(contribution)
         .mul(feeRewards)
-        .div(paidFees[1])
+        .div(correctContributions)
       const totalReward = roundReward.mul(BigNumber.from(totalAppeals))
 
       expect(balancesBefore.crowdfunder2.add(totalReward)).to.equal(
@@ -1075,21 +1056,21 @@ describe('MockQuiz contract', async () => {
    * Withdraw rewards to beneficiary.
    * @param {address} beneficiary Address of the round contributor.
    * @param {number} questionID Id of the question.
-   * @param {number} answer Ruling to contribute to: [1, 2^256 - 1].
    * @param {number} round Appeal round from which to withdraw the rewards.
+   * @param {number} answer Ruling to contribute to: [1, 2^256 - 1].
    * @param {address} caller Can be anyone.
    * @returns {Array} Tx data.
    */
   async function withdrawHelper(
     beneficiary,
     questionID,
-    answer,
     round,
+    answer,
     caller
   ) {
     const txPromise = contract
       .connect(caller)
-      .withdrawFeesAndRewards(beneficiary, questionID, answer, round)
+      .withdrawFeesAndRewards(beneficiary, questionID, round, answer)
     const tx = await txPromise
     const receipt = await tx.wait()
 

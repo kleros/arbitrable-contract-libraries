@@ -21,8 +21,9 @@ library MultiOutcomeArbitrable {
 
     struct Round {
         mapping(uint256 => uint256) paidFees; // Tracks the fees paid by each ruling in this round.
-        uint256[2] rulingsFunded; // Stores the ruling options that are fully funded.
-        uint256 feeRewards; // Sum of reimbursable fees and stake rewards available to the parties that made contributions to the side that ultimately wins a dispute.
+        uint256 rulingFunded; // If the round is appealed, i.e. this is not the last round, 0 means that 2 rulings were fully funded.
+        uint256 totalFees; // Sum of fees paid during the funding of the appeal round.
+        uint256 appealCost; // Fees sent to the arbitrator in order to appeal.
         mapping(address => mapping(uint256 => uint256)) contributions; // Maps contributors to their contributions for each ruling.
     }
 
@@ -157,7 +158,7 @@ library MultiOutcomeArbitrable {
         require(_ruling != 0, "Invalid ruling.");
         
         Round storage round = dispute.rounds[dispute.rounds.length - 1];
-        require(_ruling != round.rulingsFunded[0], "Appeal fee has already been paid.");
+        require(_ruling != round.rulingFunded, "Appeal fee has already been paid.");
 
         (uint256 appealCost, uint256 totalCost) = getAppealFeeComponents(self, _localDisputeID, _ruling);
 
@@ -165,6 +166,7 @@ library MultiOutcomeArbitrable {
         (uint256 contribution, uint256 remainingETH) = calculateContribution(msg.value, totalCost.subCap(round.paidFees[_ruling]));
         round.contributions[msg.sender][_ruling] += contribution;
         round.paidFees[_ruling] += contribution;
+        round.totalFees += contribution; // Contributors to rulings that don't get fully funded can still win/lose rewards/contributions.
         emit AppealContribution(_localDisputeID, dispute.rounds.length - 1, _ruling, msg.sender, contribution);
 
         // Reimburse leftover ETH if any.
@@ -173,13 +175,13 @@ library MultiOutcomeArbitrable {
         
         if (round.paidFees[_ruling] >= totalCost) {
             emit HasPaidAppealFee(_localDisputeID, dispute.rounds.length - 1, _ruling);
-            if (round.rulingsFunded[0] == 0) {
-                round.rulingsFunded[0] = _ruling;
+            if (round.rulingFunded == 0) {
+                round.rulingFunded = _ruling;
             } else {
                 // Two rulings are fully funded. Create an appeal.
                 self.arbitrator.appeal{value: appealCost}(dispute.disputeIDOnArbitratorSide, self.arbitratorExtraData);
-                round.rulingsFunded[1] = _ruling;
-                round.feeRewards = (round.paidFees[round.rulingsFunded[0]] + round.paidFees[_ruling]).subCap(appealCost);
+                round.appealCost = appealCost;
+                round.rulingFunded = 0; // clear storage
                 dispute.rounds.push();
             }
         }
@@ -203,11 +205,11 @@ library MultiOutcomeArbitrable {
 
         Round storage round = dispute.rounds[dispute.rounds.length - 1];
 
-        // If only one ruling was fully funded, we assume that ruling to be the correct one.
-        if (round.rulingsFunded[0] == 0)
+        // If only one ruling was fully funded, we consider it the winner, regardless of the arbitrator's decision.
+        if (round.rulingFunded == 0)
             finalRuling = _ruling;
         else
-            finalRuling = round.rulingsFunded[0];
+            finalRuling = round.rulingFunded;
 
         dispute.status = Status.Resolved;
         dispute.ruling = finalRuling;
@@ -215,123 +217,66 @@ library MultiOutcomeArbitrable {
         emit Ruling(self.arbitrator, _disputeIDOnArbitratorSide, finalRuling);
     }
 
-    /** @dev Calculates the reward that the _beneficiary is entitled to at _round, clears the storage and emits the corresponding Withdrawal event.
-     *  Beware that this function does NOT check the status of the dispute and does NOT send the rewards to the _beneficiary. Use withdrawFeesAndRewards() for that purpose.
-     *  @param _localDisputeID The dispute ID as defined in the arbitrable contract.
-     *  @param _beneficiary The address that made contributions.
-     *  @param _ruling The ruling to which the contributions were made.
-     *  @param _round The round from which to withdraw.
-     *  @return reward The reward value that was withdrawn and can be sent to the _beneficiary.
-     */
-    function _registerWithdrawal(
-        ArbitrableStorage storage self, 
-        uint256 _localDisputeID, 
-        address _beneficiary, 
-        uint256 _ruling,
-        uint256 _round
-        ) internal returns(uint256 reward) {
-
-        DisputeData storage dispute = self.disputes[_localDisputeID];
-        Round storage round = dispute.rounds[_round];
-        mapping(uint256 => uint256) storage contributionTo = round.contributions[_beneficiary];
-        uint256 lastRound = dispute.rounds.length - 1;
-
-        if (_round == lastRound || (round.rulingsFunded[0] != _ruling && round.rulingsFunded[1] != _ruling)) {
-            // Allow to reimburse if funding was unsuccessful, i.e. appeal wasn't created or ruling wasn't fully funded.
-            // Notice that in practice jurors can vote for rulings that didn't fund the appeal. If this happens, contributors to the winner ruling are only entitle to receive their contributions back.
-            reward = contributionTo[_ruling];
-            contributionTo[_ruling] = 0;
-            emit Withdrawal(_localDisputeID, _round, _ruling, _beneficiary, reward);
-        } else if (round.rulingsFunded[0] != dispute.ruling && round.rulingsFunded[1] != dispute.ruling) {
-            // Reimburse unspent fees proportionally, if none of the funding rulings won.
-            uint256 totalFeesPaid = round.paidFees[round.rulingsFunded[0]] + round.paidFees[round.rulingsFunded[1]];
-            uint256 totalBeneficiaryContributions = contributionTo[round.rulingsFunded[0]] + contributionTo[round.rulingsFunded[1]];
-            reward = totalFeesPaid > 0 ? (totalBeneficiaryContributions * round.feeRewards) / totalFeesPaid : 0;
-
-            contributionTo[round.rulingsFunded[0]] = 0;
-            contributionTo[round.rulingsFunded[1]] = 0;
-            emit Withdrawal(_localDisputeID, _round, round.rulingsFunded[0], _beneficiary, reward);
-            emit Withdrawal(_localDisputeID, _round, round.rulingsFunded[1], _beneficiary, reward);
-        } else if (_ruling == dispute.ruling) {
-            // Reward the winner.
-            reward = round.paidFees[dispute.ruling] > 0
-                ? (contributionTo[dispute.ruling] * round.feeRewards) / round.paidFees[dispute.ruling]
-                : 0;
-            contributionTo[dispute.ruling] = 0;
-            emit Withdrawal(_localDisputeID, _round, dispute.ruling, _beneficiary, reward);
-        }
-    }
-
     /** @dev Withdraws contributions of appeal rounds. Reimburses contributions if the appeal was not fully funded. 
      *  If the appeal was fully funded, sends the fee stake rewards and reimbursements proportional to the contributions made to the winner of a dispute.
      *  @param _localDisputeID The dispute ID as defined in the arbitrable contract.
      *  @param _beneficiary The address that made contributions.
-     *  @param _ruling The ruling to which the contributions were made.
      *  @param _round The round from which to withdraw.
+     *  @param _ruling The ruling to which the contributions were made.
      */
     function withdrawFeesAndRewards(
         ArbitrableStorage storage self, 
         uint256 _localDisputeID, 
         address payable _beneficiary, 
-        uint256 _ruling, 
-        uint256 _round
+        uint256 _round,
+        uint256 _ruling
     ) internal {
-        require(self.disputes[_localDisputeID].status == Status.Resolved, "Dispute not resolved.");
-        uint256 reward = _registerWithdrawal(self, _localDisputeID, _beneficiary, _ruling, _round);
-        _beneficiary.send(reward); // It is the user responsibility to accept ETH.
+        DisputeData storage dispute = self.disputes[_localDisputeID];
+        require(dispute.status == Status.Resolved, "Dispute not resolved.");
+        uint256 reward = getWithdrawableAmount(self, _localDisputeID, _beneficiary, _round, _ruling);
+
+        if (reward > 0) {
+            mapping(uint256 => uint256) storage contributionTo = dispute.rounds[_round].contributions[_beneficiary];
+            contributionTo[_ruling] = 0;
+            emit Withdrawal(_localDisputeID, _round, _ruling, _beneficiary, reward);
+            _beneficiary.send(reward); // It is the user responsibility to accept ETH.
+        }
     }
     
     /** @dev Withdraws contributions of multiple appeal rounds at once. This function is O(n) where n is the number of rounds. 
      *  This could exceed the gas limit, therefore this function should be used only as a utility and not be relied upon by other contracts.
      *  @param _localDisputeID The dispute ID as defined in the arbitrable contract.
      *  @param _beneficiary The address that made the contributions.
-     *  @param _ruling The ruling to which the contributions were made.
      *  @param _cursor The round from where to start withdrawing.
      *  @param _count The number of rounds to iterate. If set to 0 or a value larger than the number of rounds, iterates until the last round.
+     *  @param _ruling The ruling to which the contributions were made.
      */
-    function withdrawRoundBatch(
+    function batchWithdrawFeesAndRewards(
         ArbitrableStorage storage self, 
         uint256 _localDisputeID, 
         address payable _beneficiary, 
-        uint256 _ruling, 
         uint256 _cursor, 
-        uint256 _count
+        uint256 _count,
+        uint256 _ruling 
     ) internal {
-
         DisputeData storage dispute = self.disputes[_localDisputeID];
         require(dispute.status == Status.Resolved, "Dispute not resolved.");
 
         uint256 maxRound = _count == 0 ? dispute.rounds.length : _cursor + _count;
-        uint256 reward;
         if (maxRound > dispute.rounds.length)
             maxRound = dispute.rounds.length;
-        for (uint256 i = _cursor; i < maxRound; i++)
-            reward += _registerWithdrawal(self, _localDisputeID, _beneficiary, _ruling, i);
-        
-        _beneficiary.send(reward); // It is the user responsibility to accept ETH.
-    }
-
-    /** @dev Withdraws contributions of multiple rulings for given round at once. This function is O(n) where n is the number of rulings. 
-     *  This could exceed the gas limit, therefore this function should be used only as a utility and not be relied upon by other contracts.
-     *  @param _localDisputeID The dispute ID as defined in the arbitrable contract.
-     *  @param _beneficiary The address that made the contributions.
-     *  @param _rulings Array of rulings to which the contributions were made.
-     *  @param _round The round from which to withdrawing.
-     */
-    function withdrawMultipleRulings(
-        ArbitrableStorage storage self, 
-        uint256 _localDisputeID, 
-        address payable _beneficiary,
-        uint256[] memory _rulings,
-        uint256 _round
-    ) internal {
-        DisputeData storage dispute = self.disputes[_localDisputeID];
-        require(dispute.status == Status.Resolved, "Dispute not resolved.");
-
         uint256 reward;
-        for (uint256 i = 0; i < _rulings.length; i++) 
-            reward += _registerWithdrawal(self, _localDisputeID, _beneficiary, _rulings[i], _round);
-        
+        for (uint256 i = _cursor; i < maxRound; i++) {
+            uint256 roundReward = getWithdrawableAmount(self, _localDisputeID, _beneficiary, i, _ruling);
+            reward += roundReward;
+
+            if (roundReward > 0) {
+                mapping(uint256 => uint256) storage contributionTo = dispute.rounds[i].contributions[_beneficiary];
+                contributionTo[_ruling] = 0;
+                emit Withdrawal(_localDisputeID, i, _ruling, _beneficiary, roundReward);
+            }
+        }
+            
         _beneficiary.send(reward); // It is the user responsibility to accept ETH.
     }
 
@@ -359,19 +304,19 @@ library MultiOutcomeArbitrable {
         mapping(uint256 => uint256) storage contributionTo = round.contributions[_beneficiary];
         uint256 lastRound = dispute.rounds.length - 1;
 
-        if (_round == lastRound || (round.rulingsFunded[0] != _ruling && round.rulingsFunded[1] != _ruling)) {
-            // Allow to reimburse if funding was unsuccessful, i.e. appeal wasn't created or ruling wasn't fully funded.
+        if (_round == lastRound) {
+            // Allow to reimburse if funding was unsuccessful, i.e. appeal wasn't created.
             reward = contributionTo[_ruling];
-        } else if (round.rulingsFunded[0] != dispute.ruling && round.rulingsFunded[1] != dispute.ruling) {
-            // Reimburse unspent fees proportionally, if none of the funding rulings won.
-            uint256 totalFeesPaid = round.paidFees[round.rulingsFunded[0]] + round.paidFees[round.rulingsFunded[1]];
-            uint256 totalBeneficiaryContributions = contributionTo[round.rulingsFunded[0]] + contributionTo[round.rulingsFunded[1]];
-            reward = totalFeesPaid > 0 ? (totalBeneficiaryContributions * round.feeRewards) / totalFeesPaid : 0;
-        } else if (_ruling == dispute.ruling) {
-            // Reward the winner.
-            reward = round.paidFees[dispute.ruling] > 0
-                ? (contributionTo[dispute.ruling] * round.feeRewards) / round.paidFees[dispute.ruling]
-                : 0;
+        } else if (round.paidFees[dispute.ruling] > 0) {
+            // If there is a winner, reward the winner.
+            if (_ruling == dispute.ruling) {
+                uint256 feeRewards = round.totalFees.subCap(round.appealCost);
+                reward = (contributionTo[_ruling] * feeRewards) / round.paidFees[_ruling];
+            }
+        } else {
+            // There is no winner. Reimburse unspent fees proportionally.
+            uint256 feeRewards = round.totalFees.subCap(round.appealCost);
+            reward = round.totalFees > 0 ? (contributionTo[_ruling] * feeRewards) / round.totalFees : 0;
         }
     }
 
@@ -451,68 +396,45 @@ library MultiOutcomeArbitrable {
     /** @dev Gets the information on a round of a disputed dispute.
      *  @param _localDisputeID The dispute ID as defined in the arbitrable contract.
      *  @param _round The round to be queried.
-     *  @return paidFees rulingsFunded feeRewards appealed The round information.
+     *  @return rulingFunded feeRewards appealCostPaid appealed The round information.
      */
     function getRoundInfo(
         ArbitrableStorage storage self, 
         uint256 _localDisputeID, 
         uint256 _round
     ) internal view returns(
-        uint256[2] memory paidFees,
-        uint256[2] memory rulingsFunded,
+        uint256 rulingFunded,
         uint256 feeRewards,
+        uint256 appealCostPaid,
         bool appealed
     ) {
         DisputeData storage dispute = self.disputes[_localDisputeID];
         Round storage round = dispute.rounds[_round];
 
-        paidFees[0] = round.paidFees[round.rulingsFunded[0]];
-        paidFees[1] = round.paidFees[round.rulingsFunded[1]];
-
-        return (
-            paidFees,
-            round.rulingsFunded,
-            round.feeRewards,
-            _round != dispute.rounds.length - 1
-        );
+        rulingFunded = round.rulingFunded;
+        feeRewards = round.totalFees.subCap(round.appealCost);
+        appealCostPaid = round.appealCost;
+        appealed = _round != dispute.rounds.length - 1;
     }
 
-    /** @dev Gets the current fundings raised for a ruling at a given round.
-     *  @param _localDisputeID The dispute ID as defined in the arbitrable contract.
-     *  @param _round The round number.
-     *  @param _ruling The address of the contributor.
-     *  @return feesRaised fullyFunded contributions Array of funded rulings and the contributions the beneficiary made to them.
-     */
-    function getFundingStatus(
-        ArbitrableStorage storage self, 
-        uint256 _localDisputeID, 
-        uint256 _round,
-        uint256 _ruling
-    ) internal view returns(uint256 feesRaised, bool fullyFunded) {
-        DisputeData storage dispute = self.disputes[_localDisputeID];
-        Round storage round = dispute.rounds[_round];
-
-        feesRaised = round.paidFees[_ruling];
-        fullyFunded = round.rulingsFunded[0] == _ruling || round.rulingsFunded[1] == _ruling;
-    }
-
-    /** @dev Gets the contributions made by a party for a given round of appeal of a disputed dispute.
+    /** @dev Gets the contribution to a ruling made by an address for a given round of appeal of a dispute.
      *  @param _localDisputeID The dispute ID as defined in the arbitrable contract.
      *  @param _round The round number.
      *  @param _contributor The address of the contributor.
-     *  @return rulingsFunded contributions Array of funded rulings and the contributions the beneficiary made to them.
+     *  @param _ruling The address of the contributor.
+     *  @return contribution made by _contributor.
+     *  @return rulingContributions sum of all contributions to _ruling.
      */
-    function getContributionsToSuccessfulFundings(
+    function getContribution(
         ArbitrableStorage storage self, 
-        uint256 _localDisputeID,
+        uint256 _localDisputeID, 
         uint256 _round,
-        address _contributor
-    ) internal view returns(uint[2] memory rulingsFunded, uint[2] memory contributions) {
+        address _contributor,
+        uint256 _ruling
+    ) internal view returns(uint256 contribution, uint256 rulingContributions) {
         DisputeData storage dispute = self.disputes[_localDisputeID];
         Round storage round = dispute.rounds[_round];
-
-        rulingsFunded = round.rulingsFunded;
-        contributions[0] = round.contributions[_contributor][rulingsFunded[0]];
-        contributions[1] = round.contributions[_contributor][rulingsFunded[1]];
+        contribution = round.contributions[_contributor][_ruling];
+        rulingContributions = round.paidFees[_ruling];
     }
 }
