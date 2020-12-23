@@ -206,7 +206,7 @@ library BinaryArbitrable {
 
         Round storage round = dispute.rounds[dispute.rounds.length - 1];
 
-        // If only one ruling was fully funded, we considered it the winner, regardless of the arbitrator's decision.
+        // If only one ruling was fully funded, we consider it the winner, regardless of the arbitrator's decision.
         if (round.rulingFunded == 0)
             finalRuling = _ruling;
         else
@@ -232,17 +232,19 @@ library BinaryArbitrable {
     ) internal {
         DisputeData storage dispute = self.disputes[_localDisputeID];
         require(dispute.status == Status.Resolved, "Dispute not resolved.");
-        uint256 reward = getWithdrawableAmount(self, _localDisputeID, _beneficiary, _round);
+
+        (uint256 rewardA, uint256 rewardB) = getWithdrawableAmount(self, _localDisputeID, _beneficiary, _round);
 
         uint256[3] storage contributionTo = dispute.rounds[_round].contributions[_beneficiary];
-        contributionTo[PARTY_A] = 0;
-        contributionTo[PARTY_B] = 0;
-
-        // The beneficiary doesn't withdraw fees and rewards from a particular ruling but from any. Therefore, the 'ruling' field of Withdrawal is left undefined (0).
-        if (reward > 0) {
-            emit Withdrawal(_localDisputeID, _round, 0, _beneficiary, reward);
-            _beneficiary.send(reward); // It is the user responsibility to accept ETH.
+        if (rewardA > 0) {
+            contributionTo[PARTY_A] = 0;
+            emit Withdrawal(_localDisputeID, _round, PARTY_A, _beneficiary, rewardA);
         }
+        if (rewardB > 0) {
+            contributionTo[PARTY_B] = 0;
+            emit Withdrawal(_localDisputeID, _round, PARTY_B, _beneficiary, rewardB);
+        }
+        _beneficiary.send(rewardA + rewardB); // It is the user responsibility to accept ETH.
     }
     
     /** @dev Withdraws contributions of multiple appeal rounds at once. This function is O(n) where n is the number of rounds. 
@@ -267,16 +269,18 @@ library BinaryArbitrable {
             maxRound = dispute.rounds.length;
         uint256 reward;
         for (uint256 i = _cursor; i < maxRound; i++) {
-            uint256 roundReward = getWithdrawableAmount(self, _localDisputeID, _beneficiary, i);
-            reward += roundReward;
+            (uint256 rewardA, uint256 rewardB) = getWithdrawableAmount(self, _localDisputeID, _beneficiary, i);
+            reward += rewardA + rewardB;
 
             uint256[3] storage contributionTo = dispute.rounds[i].contributions[_beneficiary];
-            contributionTo[PARTY_A] = 0;
-            contributionTo[PARTY_B] = 0;
-
-            // The beneficiary doesn't withdraw fees and rewards from a particular ruling but from any. Therefore, the 'ruling' field of Withdrawal is left undefined (0).
-            if (roundReward > 0)
-                emit Withdrawal(_localDisputeID, i, 0, _beneficiary, roundReward);
+            if (rewardA > 0) {
+                contributionTo[PARTY_A] = 0;
+                emit Withdrawal(_localDisputeID, i, PARTY_A, _beneficiary, rewardA);
+            }
+            if (rewardB > 0) {
+                contributionTo[PARTY_B] = 0;
+                emit Withdrawal(_localDisputeID, i, PARTY_B, _beneficiary, rewardB);
+            }
         }
 
         _beneficiary.send(reward); // It is the user responsibility to accept ETH.
@@ -291,14 +295,14 @@ library BinaryArbitrable {
      *  @param _localDisputeID The dispute ID as defined in the arbitrable contract.
      *  @param _beneficiary The address that made the contributions.
      *  @param _round The round from which to withdraw.
-     *  @return reward The reward value to which the _beneficiary is entitled at a given round.
+     *  @return rewardA rewardB The rewards to which the _beneficiary is entitled at a given round.
      */
     function getWithdrawableAmount(
         ArbitrableStorage storage self, 
         uint256 _localDisputeID, 
         address _beneficiary, 
         uint256 _round
-    ) internal view returns(uint256 reward) {
+    ) internal view returns(uint256 rewardA, uint256 rewardB) {
         DisputeData storage dispute = self.disputes[_localDisputeID];
         Round storage round = dispute.rounds[_round];
         uint256 lastRound = dispute.rounds.length - 1;
@@ -306,17 +310,22 @@ library BinaryArbitrable {
         
         if (_round == lastRound) {
             // Allow to reimburse if funding was unsuccessful.
-            reward = contributionTo[PARTY_A] + contributionTo[PARTY_B];
+            rewardA = contributionTo[PARTY_A];
+            rewardB = contributionTo[PARTY_B];
         } else if (dispute.ruling == 0) {
             // Reimburse unspent fees proportionally if there is no winner and loser.
             uint256 totalFeesPaid = round.paidFees[PARTY_A] + round.paidFees[PARTY_B];
-            uint256 totalBeneficiaryContributions = contributionTo[PARTY_A] + contributionTo[PARTY_B];
-            reward = totalFeesPaid > 0 ? (totalBeneficiaryContributions * round.feeRewards) / totalFeesPaid : 0;
+            if (totalFeesPaid > 0) {
+                rewardA = contributionTo[PARTY_A] * round.feeRewards / totalFeesPaid;
+                rewardB = contributionTo[PARTY_B] * round.feeRewards / totalFeesPaid;
+            }
         } else {
             // Reward the winner.
-            reward = round.paidFees[dispute.ruling] > 0
+            uint256 reward = round.paidFees[dispute.ruling] > 0
                 ? (contributionTo[dispute.ruling] * round.feeRewards) / round.paidFees[dispute.ruling]
                 : 0;
+            if (dispute.ruling == PARTY_A) rewardA = reward;
+            if (dispute.ruling == PARTY_B) rewardB = reward;
         }
     }
 
@@ -421,7 +430,7 @@ library BinaryArbitrable {
         );
     }
 
-    /** @dev Gets the contributions made by a party for a given round of appeal of a dispute.
+    /** @dev Gets the contributions made by an address for a given round of appeal of a dispute.
      *  @param _localDisputeID The dispute ID as defined in the arbitrable contract.
      *  @param _round The round number.
      *  @param _contributor The address of the contributor.

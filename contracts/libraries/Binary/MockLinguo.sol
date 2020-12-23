@@ -455,8 +455,10 @@ contract Linguo is IArbitrable, IEvidence, IAppealEvents {
      */
     function getTotalWithdrawableAmount(uint256 _taskID, address _beneficiary) external view returns (uint256 total) {
         uint256 totalRounds = arbitrableStorage.disputes[_taskID].rounds.length;
-        for (uint256 roundI; roundI < totalRounds; roundI++)
-            total += arbitrableStorage.getWithdrawableAmount(_taskID, _beneficiary, roundI);
+        for (uint256 roundI; roundI < totalRounds; roundI++) {
+            (uint256 rewardA, uint256 rewardB) = arbitrableStorage.getWithdrawableAmount(_taskID, _beneficiary, roundI);
+            total += rewardA + rewardB;
+        }
     }
 
     /** @dev Gets the deposit required for self-assigning the task.
