@@ -64,14 +64,14 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
     BinaryArbitrable.ArbitrableStorage public arbitrableStorage; // Contains most of the data related to arbitration.
     uint256 public constant TX_ID = 0;
     uint256 public constant META_EVIDENCE_ID = 0;
+    uint256 public constant RECLAMATION_PERIOD = 3 minutes;
+    uint256 public constant ARBITRATION_FEE_DEPOSIT_PERIOD = 3 minutes;
 
     address payable public payer = msg.sender;
     address payable public payee;
     uint256 public value;
     string public agreement;
     uint256 public createdAt;
-    uint256 public constant reclamationPeriod = 3 minutes;
-    uint256 public constant arbitrationFeeDepositPeriod = 3 minutes;
 
     enum RulingOptions {RefusedToArbitrate, PayerWins, PayeeWins}
     enum Status {Initial, Reclaimed, Resolved}
@@ -112,7 +112,7 @@ Let's adapt `reclaimFunds()` now:
 
 ```js
     function reclaimFunds() public payable {
-        BinaryArbitrable.Status disputeStatus = arbitrableStorage.items[TX_ID].status;
+        BinaryArbitrable.Status disputeStatus = arbitrableStorage.disputes[TX_ID].status;
         require(disputeStatus == BinaryArbitrable.Status.None, "Dispute has already been created.");
         require(status != Status.Resolved, "Transaction is already resolved.");
         require(msg.sender == payer, "Only the payer can reclaim the funds.");
@@ -125,7 +125,7 @@ Let's adapt `reclaimFunds()` now:
             payer.send(address(this).balance);
             status = Status.Resolved;
         } else {
-            require(block.timestamp - createdAt <= reclamationPeriod, "Reclamation period ended.");
+            require(block.timestamp - createdAt <= RECLAMATION_PERIOD, "Reclamation period ended.");
 
             uint256 arbitrationCost = arbitrableStorage.getArbitrationCost();
             require(
@@ -138,7 +138,7 @@ Let's adapt `reclaimFunds()` now:
     }
 ```
 
-We can access the dispute data of the transaction by reading its ItemData. This information is stored in the items mapping by the id we have provided (`TX_ID`). Above we check that the transaction was not disputed. 
+We can access the dispute data of the transaction by reading its DisputeData. This information is stored in the disputes mapping by the id we have provided (`TX_ID`). Above we check that the transaction was not disputed. 
 
 We are ready to create disputes now. If the `payer` reclaimed the funds, by sending the cost of arbitration to the contract, the `payee` can ask for arbitration: 
 
@@ -266,9 +266,11 @@ We are almost done! Let's finish our Escrow contract by adding some useful gette
     }
 
     function getTotalWithdrawableAmount(address _beneficiary) external view returns (uint256 total) {
-        uint256 totalRounds = arbitrableStorage.items[TX_ID].rounds.length;
-        for (uint256 roundI; roundI < totalRounds; roundI++)
-            total += arbitrableStorage.getWithdrawableAmount(TX_ID, _beneficiary, roundI);
+        uint256 totalRounds = arbitrableStorage.disputes[TX_ID].rounds.length;
+        for (uint256 roundI; roundI < totalRounds; roundI++) {
+            (uint256 rewardA, uint256 rewardB) = arbitrableStorage.getWithdrawableAmount(TX_ID, _beneficiary, roundI);
+            total += rewardA + rewardB;
+        }
     }
 ```
 

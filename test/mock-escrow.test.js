@@ -1259,7 +1259,7 @@ describe('MockEscrow contract', async () => {
       )
       expect(withdrawPromiseCF1)
         .to.emit(contract, 'Withdrawal')
-        .withArgs(transactionId, BigNumber.from(0), BigNumber.from(0), await crowdfunder1.getAddress(), reward3)
+        .withArgs(transactionId, BigNumber.from(0), TransactionParty.Sender, await crowdfunder1.getAddress(), reward3)
 
       const reward4 = BigNumber.from(contribution4)
         .mul(feeRewards)
@@ -1270,7 +1270,7 @@ describe('MockEscrow contract', async () => {
       )
       expect(withdrawPromiseCF2)
         .to.emit(contract, 'Withdrawal')
-        .withArgs(transactionId, BigNumber.from(0), BigNumber.from(0), await crowdfunder2.getAddress(), reward4)
+        .withArgs(transactionId, BigNumber.from(0), TransactionParty.Sender, await crowdfunder2.getAddress(), reward4)
     })
 
     it('Should withdraw correct fees if arbitrator refused to arbitrate', async () => {
