@@ -452,7 +452,7 @@ contract MockEscrow is IArbitrable, IEvidence, IAppealEvents {
         Transaction calldata _transaction, 
         address _beneficiary
     ) public view onlyValidTransaction(_transactionID, _transaction) returns (uint256 total) {
-        uint256 totalRounds = arbitrableStorage.disputes[_transactionID].rounds.length;
+        uint256 totalRounds = arbitrableStorage.disputes[_transactionID].roundCounter;
         for (uint256 roundI; roundI < totalRounds; roundI++) {
             (uint256 rewardA, uint256 rewardB) = arbitrableStorage.getWithdrawableAmount(_transactionID, _beneficiary, roundI);
             total += rewardA + rewardB;

@@ -167,7 +167,7 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
     }
 
     function getTotalWithdrawableAmount(address _beneficiary) external view returns (uint256 total) {
-        uint256 totalRounds = arbitrableStorage.disputes[TX_ID].rounds.length;
+        uint256 totalRounds = arbitrableStorage.disputes[TX_ID].roundCounter;
         for (uint256 roundI; roundI < totalRounds; roundI++) {
             (uint256 rewardA, uint256 rewardB) = arbitrableStorage.getWithdrawableAmount(TX_ID, _beneficiary, roundI);
             total += rewardA + rewardB;

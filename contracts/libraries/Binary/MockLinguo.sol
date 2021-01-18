@@ -454,7 +454,7 @@ contract Linguo is IArbitrable, IEvidence, IAppealEvents {
      *  @return total The total amount of wei available to withdraw.
      */
     function getTotalWithdrawableAmount(uint256 _taskID, address _beneficiary) external view returns (uint256 total) {
-        uint256 totalRounds = arbitrableStorage.disputes[_taskID].rounds.length;
+        uint256 totalRounds = arbitrableStorage.disputes[_taskID].roundCounter;
         for (uint256 roundI; roundI < totalRounds; roundI++) {
             (uint256 rewardA, uint256 rewardB) = arbitrableStorage.getWithdrawableAmount(_taskID, _beneficiary, roundI);
             total += rewardA + rewardB;
