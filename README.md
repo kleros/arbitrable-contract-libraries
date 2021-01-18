@@ -49,7 +49,7 @@ In order to make the SimpleEscrow contract arbitrable we need to be able to (1) 
 
 Let's start by importing the BinaryArbitrable library and using it to give super powers to the variable `arbitrableStorage`:
 
-```js
+```solidity
 pragma solidity >=0.7;
 
 import "./BinaryArbitrable.sol";
@@ -86,7 +86,7 @@ Notice that `arbitrator` and `numberOfRulingOptions` are taken care of inside th
 
 From now on, every time we interact with the arbitrator, we will do so through `arbitrableStorage`. As we will see, we won't have to worry about managing the dispute data. The library will manage it for us. However, before we start, `arbitrableStorage` needs to be set up:
 
-```js
+```solidity
     constructor(
         address payable _payee,
         IArbitrator _arbitrator,
@@ -110,7 +110,7 @@ Second, we set the multipliers. The multipliers are only used during appeals. If
 
 Let's adapt `reclaimFunds()` now:
 
-```js
+```solidity
     function reclaimFunds() public payable {
         BinaryArbitrable.Status disputeStatus = arbitrableStorage.disputes[TX_ID].status;
         require(disputeStatus == BinaryArbitrable.Status.None, "Dispute has already been created.");
@@ -142,7 +142,7 @@ We can access the dispute data of the transaction by reading its DisputeData. Th
 
 We are ready to create disputes now. If the `payer` reclaimed the funds, by sending the cost of arbitration to the contract, the `payee` can ask for arbitration: 
 
-```js
+```solidity
     function depositArbitrationFeeForPayee() public payable {
         require(status == Status.Reclaimed, "Transaction is not in Reclaimed state.");
         uint256 arbitrationCost = arbitrableStorage.getArbitrationCost();
@@ -159,7 +159,7 @@ While creating the dispute, the library will update all necesary information and
 
 Lastly, we need to update `rule()` in order to let the arbitrator enforce a ruling.
 
-```js
+```solidity
     function rule(uint256 _disputeID, uint256 _ruling) public override {
         RulingOptions _finalRuling = RulingOptions(arbitrableStorage.processRuling(_disputeID, _ruling));
 
@@ -176,7 +176,7 @@ All the important sanity checks and the emission of the `Ruling` event are done 
 
 In many cases, it is very important that parties in dispute are allowed to defend their positions by providing evidence to the jurors. We can add this feature with a few lines of code:
 
-```js
+```solidity
     function submitEvidence(string calldata _evidence) external {
         require(msg.sender == payer || msg.sender == payee, "Invalid caller.");
         arbitrableStorage.submitEvidence(TX_ID, TX_ID, _evidence);
@@ -191,7 +191,7 @@ One thing you might be wondering is what happens if the ruling given by the arbi
 
 If you decide to use an appealable arbitrator, you can easily add the appeal feature with a function like the following:
 
-```js
+```solidity
     function fundAppeal(uint256 _ruling) external payable {
         arbitrableStorage.fundAppeal(TX_ID, _ruling);
     } 
@@ -215,7 +215,7 @@ Crowdfunders who won are rewarded. How much they get will depend on the contribu
 
 In order to allow withdrawals we add the following:
 
-```js
+```solidity
     function withdrawFeesAndRewards(address payable _beneficiary, uint256 _round) external {
         arbitrableStorage.withdrawFeesAndRewards(TX_ID, _beneficiary, _round);
     }
@@ -223,7 +223,7 @@ In order to allow withdrawals we add the following:
 
 Withdrawals are performed per crowdfunder and is their responsibility to claim the rewards. `_beneficiary` is the crowdfunder address and `_round` the appeal round they contributed to. For the sake of efficiency and simplicity, we also provide a method to withdraw from many rounds at once:
 
-```js
+```solidity
     function batchWithdrawFeesAndRewards(address payable _beneficiary, uint256 _cursor, uint256 _count) external {
         arbitrableStorage.batchWithdrawFeesAndRewards(TX_ID, _beneficiary, _cursor, _count);
     }
@@ -244,7 +244,7 @@ As stated in [BinaryArbitrable](https://github.com/kleros/appeal-utils/blob/main
 
 We are almost done! Let's finish our Escrow contract by adding some useful getters to track the status of the dispute and the corresponding appeals:
 
-```js
+```solidity
     function getRoundInfo(uint256 _round) external view returns (
             uint256[3] memory paidFees,
             uint256 rulingFunded,
