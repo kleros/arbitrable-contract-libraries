@@ -108,12 +108,11 @@ First, we set the arbitrator data: its address and the extra data if needed. Bew
 
 Second, we set the multipliers. The multipliers are only used during appeals. If you set them to values higher than zero, the cost of appealing is going to be adjusted depending on whether you are funding the loser's or the winner's ruling. More on that later.
 
-Let's adapt `reclaimFunds()` now:
+Let's adapt `reclaimFunds()` now by checking if the dispute has been created or not:
 
 ```solidity
     function reclaimFunds() public payable {
-        BinaryArbitrable.Status disputeStatus = arbitrableStorage.disputes[TX_ID].status;
-        require(disputeStatus == BinaryArbitrable.Status.None, "Dispute has already been created.");
+        require(!arbitrableStorage.disputeExists(TX_ID), "Dispute has already been created.");
         require(status != Status.Resolved, "Transaction is already resolved.");
         require(msg.sender == payer, "Only the payer can reclaim the funds.");
 
@@ -137,8 +136,6 @@ Let's adapt `reclaimFunds()` now:
         }
     }
 ```
-
-We can access the dispute data of the transaction by reading its DisputeData. This information is stored in the disputes mapping by the id we have provided (`TX_ID`). Above we check that the transaction was not disputed. 
 
 We are ready to create disputes now. If the `payer` reclaimed the funds, by sending the cost of arbitration to the contract, the `payee` can ask for arbitration: 
 
@@ -231,7 +228,7 @@ Withdrawals are performed per crowdfunder and is their responsibility to claim t
 
 As stated in [BinaryArbitrable](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/libraries/Binary/BinaryArbitrable.sol):
 
-```js
+```solidity
  /**
   *  ...
   *  @param _cursor The round from where to start withdrawing.
@@ -266,7 +263,7 @@ We are almost done! Let's finish our Escrow contract by adding some useful gette
     }
 
     function getTotalWithdrawableAmount(address _beneficiary) external view returns (uint256 total) {
-        uint256 totalRounds = arbitrableStorage.disputes[TX_ID].rounds.length;
+        uint256 totalRounds = arbitrableStorage.disputes[TX_ID].roundCounter;
         for (uint256 roundI; roundI < totalRounds; roundI++) {
             (uint256 rewardA, uint256 rewardB) = arbitrableStorage.getWithdrawableAmount(TX_ID, _beneficiary, roundI);
             total += rewardA + rewardB;

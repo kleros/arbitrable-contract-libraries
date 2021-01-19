@@ -63,7 +63,7 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
     }
 
     function reclaimFunds() public payable {
-       require(!arbitrableStorage.disputeExists(TX_ID), "Dispute has already been created.");
+        require(!arbitrableStorage.disputeExists(TX_ID), "Dispute has already been created.");
         require(status != Status.Resolved, "Transaction is already resolved.");
         require(msg.sender == payer, "Only the payer can reclaim the funds.");
 

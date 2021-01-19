@@ -1,6 +1,6 @@
 /**
  *  @authors: [@fnanni-0]
- *  @reviewers: [@epiqueras]
+ *  @reviewers: [@epiqueras*]
  *  @auditors: []
  *  @bounties: []
  */
@@ -14,10 +14,10 @@ library MultiOutcomeArbitrable {
     using CappedMath for uint256;
 
     /* *** Contract variables *** */
-    uint256 public constant MAX_NO_OF_CHOICES = uint256(-2);
-    uint256 public constant MULTIPLIER_DIVISOR = 10000; // Divisor parameter for multipliers.
+    uint256 private constant MAX_NO_OF_CHOICES = type(uint256).max - 1;
+    uint256 private constant MULTIPLIER_DIVISOR = 10000; // Divisor parameter for multipliers.
 
-    enum Status {Undisputed, Disputed, Resolved}
+    enum Status {None, Disputed, Resolved}
 
     struct Round {
         mapping(uint256 => uint256) paidFees; // Tracks the fees paid by each ruling in this round.
@@ -28,7 +28,8 @@ library MultiOutcomeArbitrable {
     }
 
     struct DisputeData {
-        Round[] rounds;
+        mapping(uint256 => Round) rounds;
+        uint248 roundCounter;
         Status status;
         uint256 ruling;
         uint256 disputeIDOnArbitratorSide;
@@ -94,8 +95,10 @@ library MultiOutcomeArbitrable {
         IArbitrator _arbitrator, 
         bytes memory _arbitratorExtraData
         ) internal {
-        require(self.arbitrator == IArbitrator(0x0), "Arbitrator already set.");
-        require(_arbitrator != IArbitrator(0x0), "Invalid arbitrator address.");
+        require(
+            self.arbitrator == IArbitrator(0x0) && _arbitrator != IArbitrator(0x0), 
+            "Arbitrator is set or is invalid."
+        );
         self.arbitrator = _arbitrator;
         self.arbitratorExtraData = _arbitratorExtraData;
     }
@@ -115,14 +118,14 @@ library MultiOutcomeArbitrable {
         uint256 _evidenceGroupID
     ) internal returns(uint256 disputeID) {
         DisputeData storage dispute = self.disputes[_localDisputeID];
-        require(dispute.status == Status.Undisputed, "Dispute already created.");
+        require(dispute.status == Status.None, "Dispute already created.");
         
         disputeID = self.arbitrator.createDispute{value: _arbitrationCost}(MAX_NO_OF_CHOICES, self.arbitratorExtraData);
         
-        dispute.status = Status.Disputed;
         dispute.disputeIDOnArbitratorSide = disputeID;
-        dispute.rounds.push();
-
+        dispute.status = Status.Disputed;
+        dispute.roundCounter = 1;
+        
         self.externalIDtoLocalID[disputeID] = _localDisputeID;
 
         emit Dispute(self.arbitrator, disputeID, _metaEvidenceID, _evidenceGroupID);
@@ -141,7 +144,7 @@ library MultiOutcomeArbitrable {
     ) internal {
         require(
             self.disputes[_localDisputeID].status < Status.Resolved,
-            "Must not send evidence if the dispute is resolved."
+            "The dispute is resolved."
         );
 
         if (bytes(_evidence).length > 0)
@@ -155,34 +158,40 @@ library MultiOutcomeArbitrable {
     function fundAppeal(ArbitrableStorage storage self, uint256 _localDisputeID, uint256 _ruling) internal {
         DisputeData storage dispute = self.disputes[_localDisputeID];
         require(dispute.status == Status.Disputed, "No ongoing dispute to appeal.");
-        require(_ruling != 0, "Invalid ruling.");
         
-        Round storage round = dispute.rounds[dispute.rounds.length - 1];
-        require(_ruling != round.rulingFunded, "Appeal fee has already been paid.");
+        uint256 currentRound = uint256(dispute.roundCounter - 1);
+        Round storage round = dispute.rounds[currentRound];
+        uint256 rulingFunded = round.rulingFunded; // Use local variable for gas saving purposes.
+        require(
+            _ruling != rulingFunded && _ruling != 0, 
+            "Ruling is funded or is invalid."
+        );
 
         (uint256 appealCost, uint256 totalCost) = getAppealFeeComponents(self, _localDisputeID, _ruling);
 
+        uint256 paidFee = round.paidFees[_ruling]; // Use local variable for gas saving purposes.
         // Take up to the amount necessary to fund the current round at the current costs.
-        (uint256 contribution, uint256 remainingETH) = calculateContribution(msg.value, totalCost.subCap(round.paidFees[_ruling]));
+        (uint256 contribution, uint256 remainingETH) = calculateContribution(msg.value, totalCost.subCap(paidFee));
         round.contributions[msg.sender][_ruling] += contribution;
         round.paidFees[_ruling] += contribution;
+        paidFee += contribution;
         round.totalFees += contribution; // Contributors to rulings that don't get fully funded can still win/lose rewards/contributions.
-        emit AppealContribution(_localDisputeID, dispute.rounds.length - 1, _ruling, msg.sender, contribution);
+        emit AppealContribution(_localDisputeID, currentRound, _ruling, msg.sender, contribution);
 
         // Reimburse leftover ETH if any.
         if (remainingETH > 0)
-            msg.sender.send(remainingETH); // Deliberate use of send in order to not block the contract in case of reverting fallback.
+            msg.sender.send(remainingETH); // Deliberate use of send in order not to block the contract in case of reverting fallback.
         
-        if (round.paidFees[_ruling] >= totalCost) {
-            emit HasPaidAppealFee(_localDisputeID, dispute.rounds.length - 1, _ruling);
-            if (round.rulingFunded == 0) {
+        if (paidFee >= totalCost) {
+            emit HasPaidAppealFee(_localDisputeID, currentRound, _ruling);
+            if (rulingFunded == 0) {
                 round.rulingFunded = _ruling;
             } else {
                 // Two rulings are fully funded. Create an appeal.
                 self.arbitrator.appeal{value: appealCost}(dispute.disputeIDOnArbitratorSide, self.arbitratorExtraData);
                 round.appealCost = appealCost;
                 round.rulingFunded = 0; // clear storage
-                dispute.rounds.push();
+                dispute.roundCounter++;
             }
         }
     }
@@ -200,10 +209,13 @@ library MultiOutcomeArbitrable {
         uint256 localDisputeID = self.externalIDtoLocalID[_disputeIDOnArbitratorSide];
         DisputeData storage dispute = self.disputes[localDisputeID];
 
-        require(dispute.status == Status.Disputed, "Invalid dispute status.");
-        require(msg.sender == address(self.arbitrator), "The caller must be the arbitrator.");
+        require(
+            dispute.status == Status.Disputed &&
+            msg.sender == address(self.arbitrator), 
+            "Ruling can't be processed."
+        );
 
-        Round storage round = dispute.rounds[dispute.rounds.length - 1];
+        Round storage round = dispute.rounds[dispute.roundCounter - 1];
 
         // If only one ruling was fully funded, we consider it the winner, regardless of the arbitrator's decision.
         if (round.rulingFunded == 0)
@@ -236,8 +248,7 @@ library MultiOutcomeArbitrable {
         uint256 reward = getWithdrawableAmount(self, _localDisputeID, _beneficiary, _round, _ruling);
 
         if (reward > 0) {
-            mapping(uint256 => uint256) storage contributionTo = dispute.rounds[_round].contributions[_beneficiary];
-            contributionTo[_ruling] = 0;
+            dispute.rounds[_round].contributions[_beneficiary][_ruling] = 0;
             emit Withdrawal(_localDisputeID, _round, _ruling, _beneficiary, reward);
             _beneficiary.send(reward); // It is the user responsibility to accept ETH.
         }
@@ -262,17 +273,14 @@ library MultiOutcomeArbitrable {
         DisputeData storage dispute = self.disputes[_localDisputeID];
         require(dispute.status == Status.Resolved, "Dispute not resolved.");
 
-        uint256 maxRound = _count == 0 ? dispute.rounds.length : _cursor + _count;
-        if (maxRound > dispute.rounds.length)
-            maxRound = dispute.rounds.length;
+        uint256 maxRound = _cursor + _count > dispute.roundCounter ? dispute.roundCounter : _cursor + _count;
         uint256 reward;
         for (uint256 i = _cursor; i < maxRound; i++) {
             uint256 roundReward = getWithdrawableAmount(self, _localDisputeID, _beneficiary, i, _ruling);
             reward += roundReward;
 
             if (roundReward > 0) {
-                mapping(uint256 => uint256) storage contributionTo = dispute.rounds[i].contributions[_beneficiary];
-                contributionTo[_ruling] = 0;
+                dispute.rounds[i].contributions[_beneficiary][_ruling] = 0;
                 emit Withdrawal(_localDisputeID, i, _ruling, _beneficiary, roundReward);
             }
         }
@@ -301,21 +309,22 @@ library MultiOutcomeArbitrable {
     ) internal view returns(uint256 reward) {
         DisputeData storage dispute = self.disputes[_localDisputeID];
         Round storage round = dispute.rounds[_round];
+        uint256 lastRound = dispute.roundCounter - 1;
+        uint256 finalRuling = dispute.ruling;
         mapping(uint256 => uint256) storage contributionTo = round.contributions[_beneficiary];
-        uint256 lastRound = dispute.rounds.length - 1;
 
         if (_round == lastRound) {
             // Allow to reimburse if funding was unsuccessful, i.e. appeal wasn't created.
             reward = contributionTo[_ruling];
-        } else if (round.paidFees[dispute.ruling] > 0) {
+        } else if (round.paidFees[finalRuling] > 0) {
             // If there is a winner, reward the winner.
-            if (_ruling == dispute.ruling) {
-                uint256 feeRewards = round.totalFees.subCap(round.appealCost);
+            if (_ruling == finalRuling) {
+                uint256 feeRewards = round.totalFees - round.appealCost;
                 reward = (contributionTo[_ruling] * feeRewards) / round.paidFees[_ruling];
             }
         } else {
             // There is no winner. Reimburse unspent fees proportionally.
-            uint256 feeRewards = round.totalFees.subCap(round.appealCost);
+            uint256 feeRewards = round.totalFees - round.appealCost;
             reward = round.totalFees > 0 ? (contributionTo[_ruling] * feeRewards) / round.totalFees : 0;
         }
     }
@@ -365,7 +374,7 @@ library MultiOutcomeArbitrable {
         }
 
         appealCost = self.arbitrator.appealCost(dispute.disputeIDOnArbitratorSide, self.arbitratorExtraData);
-        totalCost = appealCost.addCap((appealCost.mulCap(multiplier)) / MULTIPLIER_DIVISOR);
+        totalCost = appealCost.addCap(appealCost.mulCap(multiplier) / MULTIPLIER_DIVISOR);
     }
 
     /** @dev Gets the final ruling if the dispute is resolved.
@@ -390,7 +399,7 @@ library MultiOutcomeArbitrable {
      *  @return The number of rounds.
      */
     function getNumberOfRounds(ArbitrableStorage storage self, uint256 _localDisputeID) internal view returns (uint256) {
-        return self.disputes[_localDisputeID].rounds.length;
+        return self.disputes[_localDisputeID].roundCounter;
     }
 
     /** @dev Gets the information on a round of a disputed dispute.
@@ -412,9 +421,9 @@ library MultiOutcomeArbitrable {
         Round storage round = dispute.rounds[_round];
 
         rulingFunded = round.rulingFunded;
-        feeRewards = round.totalFees.subCap(round.appealCost);
+        feeRewards = round.totalFees - round.appealCost;
         appealCostPaid = round.appealCost;
-        appealed = _round != dispute.rounds.length - 1;
+        appealed = _round != dispute.roundCounter - 1;
     }
 
     /** @dev Gets the contribution to a ruling made by an address for a given round of appeal of a dispute.

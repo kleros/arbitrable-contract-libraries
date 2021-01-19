@@ -1,6 +1,6 @@
 /**
  *  @authors: [@fnanni-0]
- *  @reviewers: [@hbarcelos*, *@epiqueras, @nix1g]
+ *  @reviewers: [@hbarcelos*, @epiqueras*, @nix1g]
  *  @auditors: []
  *  @bounties: []
  */
@@ -126,7 +126,7 @@ library BinaryArbitrable {
         disputeID = self.arbitrator.createDispute{value: _arbitrationCost}(AMOUNT_OF_CHOICES, self.arbitratorExtraData);
 
         dispute.disputeIDOnArbitratorSide = disputeID;
-        dispute.roundCounter++;
+        dispute.roundCounter = 1;
 
         self.externalIDtoLocalID[disputeID] = _localDisputeID;
 
@@ -159,9 +159,13 @@ library BinaryArbitrable {
      */
     function fundAppeal(ArbitrableStorage storage self, uint256 _localDisputeID, uint256 _ruling) internal {
         DisputeData storage dispute = self.disputes[_localDisputeID];
-        require(dispute.ruling == 0, "The dispute is resolved.");
-
         uint256 currentRound = uint256(dispute.roundCounter - 1);
+        require(
+            currentRound + 1 != 0 && // roundCounter equal to 0 means that the dispute was not created.
+            dispute.ruling == 0, 
+            "No ongoing dispute to appeal."
+        );
+
         Round storage round = dispute.rounds[currentRound];
         uint256 rulingFunded = round.rulingFunded; // Use local variable for gas saving purposes.
         require(
