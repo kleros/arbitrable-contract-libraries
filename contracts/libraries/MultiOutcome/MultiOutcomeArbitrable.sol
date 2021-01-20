@@ -14,7 +14,7 @@ library MultiOutcomeArbitrable {
     using CappedMath for uint256;
 
     /* *** Contract variables *** */
-    uint256 private constant MAX_NO_OF_CHOICES = type(uint256).max - 1;
+    uint256 private constant MAX_NO_OF_CHOICES = type(uint256).max;
     uint256 private constant MULTIPLIER_DIVISOR = 10000; // Divisor parameter for multipliers.
 
     enum Status {None, Disputed, Resolved}
