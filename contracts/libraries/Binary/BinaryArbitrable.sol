@@ -1,6 +1,6 @@
 /**
  *  @authors: [@fnanni-0]
- *  @reviewers: [@hbarcelos*, @epiqueras]
+ *  @reviewers: [@hbarcelos*, @epiqueras*, @nix1g]
  *  @auditors: []
  *  @bounties: []
  */
@@ -14,24 +14,27 @@ library BinaryArbitrable {
     using CappedMath for uint256;
 
     /* *** Contract variables *** */
-    uint256 public constant AMOUNT_OF_CHOICES = 2;
-    uint256 public constant MULTIPLIER_DIVISOR = 10000; // Divisor parameter for multipliers.
+    uint256 private constant AMOUNT_OF_CHOICES = 2;
+    uint256 private constant MULTIPLIER_DIVISOR = 10000; // Divisor parameter for multipliers.
     uint256 private constant PARTY_A = 1; // Represents the ruling option 1.
     uint256 private constant PARTY_B = 2; // Represents the ruling option 2.
 
-    enum Status {None, Disputed, Resolved}
-
     struct Round {
         uint256[3] paidFees; // Tracks the fees paid for each ruling in this round.
-        uint256 rulingFunded; // {0, 1, 2} If the round is appealed, i.e. this is not the last round, 0 means that both rulings (1 and 2) have paid.
+        uint256 rulingFunded; // {0, 1, 2} If the round is appealed, i.e. this is not the last round, 0 means that both rulings (1 and 2) were fully funded.
         uint256 feeRewards; // Sum of reimbursable fees and stake rewards available to the parties that made contributions to the ruling that ultimately wins a dispute.
         mapping(address => uint256[3]) contributions; // Maps contributors to their contributions for each ruling.
     }
 
     struct DisputeData {
-        Round[] rounds;
-        Status status;
-        uint248 ruling;
+        mapping(uint256 => Round) rounds;
+        uint248 roundCounter;
+        // ruling is adapted in the following way to save gas:
+        // 0: the dispute wasn't created or no ruling was given yet.
+        // 1: invalid/refused to rule. The dispute is resolved.
+        // 2: option 1. The dispute is resolved.
+        // 3: option 2. The dispute is resolved.
+        uint8 ruling;
         uint256 disputeIDOnArbitratorSide;
     }
 
@@ -95,8 +98,10 @@ library BinaryArbitrable {
         IArbitrator _arbitrator, 
         bytes memory _arbitratorExtraData
     ) internal {
-        require(self.arbitrator == IArbitrator(0x0), "Arbitrator already set.");
-        require(_arbitrator != IArbitrator(0x0), "Invalid arbitrator.");
+        require(
+            self.arbitrator == IArbitrator(0x0) && _arbitrator != IArbitrator(0x0), 
+            "Arbitrator is set or is invalid."
+        );
         self.arbitrator = _arbitrator;
         self.arbitratorExtraData = _arbitratorExtraData;
     }
@@ -116,13 +121,12 @@ library BinaryArbitrable {
         uint256 _evidenceGroupID
     ) internal returns(uint256 disputeID) {
         DisputeData storage dispute = self.disputes[_localDisputeID];
-        require(dispute.status == Status.None, "Dispute already created.");
+        require(dispute.roundCounter == 0, "Dispute already created.");
 
         disputeID = self.arbitrator.createDispute{value: _arbitrationCost}(AMOUNT_OF_CHOICES, self.arbitratorExtraData);
 
-        dispute.status = Status.Disputed;
         dispute.disputeIDOnArbitratorSide = disputeID;
-        dispute.rounds.push();
+        dispute.roundCounter = 1;
 
         self.externalIDtoLocalID[disputeID] = _localDisputeID;
 
@@ -141,8 +145,8 @@ library BinaryArbitrable {
         string memory _evidence
     ) internal {
         require(
-            self.disputes[_localDisputeID].status < Status.Resolved,
-            "Must not send evidence if the dispute is resolved."
+            self.disputes[_localDisputeID].ruling == 0,
+            "The dispute is resolved."
         );
 
         if (bytes(_evidence).length > 0)
@@ -155,34 +159,44 @@ library BinaryArbitrable {
      */
     function fundAppeal(ArbitrableStorage storage self, uint256 _localDisputeID, uint256 _ruling) internal {
         DisputeData storage dispute = self.disputes[_localDisputeID];
-        require(dispute.status == Status.Disputed, "No ongoing dispute to appeal.");
-        require(_ruling != 0 && _ruling <= AMOUNT_OF_CHOICES, "Invalid ruling.");
+        uint256 currentRound = uint256(dispute.roundCounter - 1);
+        require(
+            currentRound + 1 != 0 && // roundCounter equal to 0 means that the dispute was not created.
+            dispute.ruling == 0, 
+            "No ongoing dispute to appeal."
+        );
 
-        Round storage round = dispute.rounds[dispute.rounds.length - 1];
-        require(_ruling != round.rulingFunded, "Appeal fee has already been paid.");
+        Round storage round = dispute.rounds[currentRound];
+        uint256 rulingFunded = round.rulingFunded; // Use local variable for gas saving purposes.
+        require(
+            _ruling != rulingFunded && _ruling != 0, 
+            "Ruling is funded or is invalid."
+        );
 
         (uint256 appealCost, uint256 totalCost) = getAppealFeeComponents(self, _localDisputeID, _ruling);
 
+        uint256 paidFee = round.paidFees[_ruling]; // Use local variable for gas saving purposes.
         // Take up to the amount necessary to fund the current round at the current costs.
-        (uint256 contribution, uint256 remainingETH) = calculateContribution(msg.value, totalCost.subCap(round.paidFees[_ruling]));
+        (uint256 contribution, uint256 remainingETH) = calculateContribution(msg.value, totalCost.subCap(paidFee));
         round.contributions[msg.sender][_ruling] += contribution;
-        round.paidFees[_ruling] += contribution;
-        emit AppealContribution(_localDisputeID, dispute.rounds.length - 1, _ruling, msg.sender, contribution);
+        paidFee += contribution;
+        round.paidFees[_ruling] = paidFee;
+        emit AppealContribution(_localDisputeID, currentRound, _ruling, msg.sender, contribution);
 
         // Reimburse leftover ETH if any.
         if (remainingETH > 0)
-            msg.sender.send(remainingETH); // Deliberate use of send in order to not block the contract in case of reverting fallback.
+            msg.sender.send(remainingETH); // Deliberate use of send in order not to block the contract in case of reverting fallback.
 
-        if (round.paidFees[_ruling] >= totalCost) {
-            emit HasPaidAppealFee(_localDisputeID, dispute.rounds.length - 1, _ruling);
-            if (round.rulingFunded == 0) {
+        if (paidFee >= totalCost) {
+            emit HasPaidAppealFee(_localDisputeID, currentRound, _ruling);
+            if (rulingFunded == 0) {
                 round.rulingFunded = _ruling;
             } else {
                 // Both rulings are fully funded. Create an appeal.
                 self.arbitrator.appeal{value: appealCost}(dispute.disputeIDOnArbitratorSide, self.arbitratorExtraData);
-                round.feeRewards = (round.paidFees[PARTY_A] + round.paidFees[PARTY_B]).subCap(appealCost);
+                round.feeRewards = round.paidFees[PARTY_A] + round.paidFees[PARTY_B] - appealCost;
                 round.rulingFunded = 0; // clear storage
-                dispute.rounds.push();
+                dispute.roundCounter = uint248(currentRound + 2); // currentRound starts at 0 while roundCounter at 1.
             }
         }
     }
@@ -200,11 +214,14 @@ library BinaryArbitrable {
         uint256 localDisputeID = self.externalIDtoLocalID[_disputeIDOnArbitratorSide];
         DisputeData storage dispute = self.disputes[localDisputeID];
 
-        require(dispute.status == Status.Disputed, "Invalid dispute status.");
-        require(msg.sender == address(self.arbitrator), "The caller must be the arbitrator.");
-        require(_ruling <= AMOUNT_OF_CHOICES, "Invalid ruling.");
+        require(
+            dispute.ruling == 0 &&
+            msg.sender == address(self.arbitrator) &&
+            _ruling <= AMOUNT_OF_CHOICES, 
+            "Ruling can't be processed."
+        );
 
-        Round storage round = dispute.rounds[dispute.rounds.length - 1];
+        Round storage round = dispute.rounds[dispute.roundCounter - 1];
 
         // If only one ruling was fully funded, we consider it the winner, regardless of the arbitrator's decision.
         if (round.rulingFunded == 0)
@@ -212,8 +229,7 @@ library BinaryArbitrable {
         else
             finalRuling = round.rulingFunded;
 
-        dispute.status = Status.Resolved;
-        dispute.ruling = uint248(finalRuling);
+        dispute.ruling = uint8(finalRuling + 1);
 
         emit Ruling(self.arbitrator, _disputeIDOnArbitratorSide, finalRuling);
     }
@@ -231,7 +247,7 @@ library BinaryArbitrable {
         uint256 _round
     ) internal {
         DisputeData storage dispute = self.disputes[_localDisputeID];
-        require(dispute.status == Status.Resolved, "Dispute not resolved.");
+        require(dispute.ruling != 0, "Dispute not resolved.");
 
         (uint256 rewardA, uint256 rewardB) = getWithdrawableAmount(self, _localDisputeID, _beneficiary, _round);
 
@@ -262,11 +278,9 @@ library BinaryArbitrable {
         uint256 _count
     ) internal {
         DisputeData storage dispute = self.disputes[_localDisputeID];
-        require(dispute.status == Status.Resolved, "Dispute not resolved.");
+        require(dispute.ruling != 0, "Dispute not resolved.");
 
-        uint256 maxRound = _count == 0 ? dispute.rounds.length : _cursor + _count;
-        if (maxRound > dispute.rounds.length)
-            maxRound = dispute.rounds.length;
+        uint256 maxRound = _cursor + _count > dispute.roundCounter ? dispute.roundCounter : _cursor + _count;
         uint256 reward;
         for (uint256 i = _cursor; i < maxRound; i++) {
             (uint256 rewardA, uint256 rewardB) = getWithdrawableAmount(self, _localDisputeID, _beneficiary, i);
@@ -305,27 +319,30 @@ library BinaryArbitrable {
     ) internal view returns(uint256 rewardA, uint256 rewardB) {
         DisputeData storage dispute = self.disputes[_localDisputeID];
         Round storage round = dispute.rounds[_round];
-        uint256 lastRound = dispute.rounds.length - 1;
+        uint256 ruling = uint256(dispute.ruling - 1);
+        uint256 lastRound = dispute.roundCounter - 1;
         uint256[3] storage contributionTo = round.contributions[_beneficiary];
         
         if (_round == lastRound) {
             // Allow to reimburse if funding was unsuccessful.
             rewardA = contributionTo[PARTY_A];
             rewardB = contributionTo[PARTY_B];
-        } else if (dispute.ruling == 0) {
+        } else if (ruling == 0) {
             // Reimburse unspent fees proportionally if there is no winner and loser.
             uint256 totalFeesPaid = round.paidFees[PARTY_A] + round.paidFees[PARTY_B];
+            uint256 feeRewards = round.feeRewards;
             if (totalFeesPaid > 0) {
-                rewardA = contributionTo[PARTY_A] * round.feeRewards / totalFeesPaid;
-                rewardB = contributionTo[PARTY_B] * round.feeRewards / totalFeesPaid;
+                rewardA = contributionTo[PARTY_A] * feeRewards / totalFeesPaid;
+                rewardB = contributionTo[PARTY_B] * feeRewards / totalFeesPaid;
             }
         } else {
             // Reward the winner.
-            uint256 reward = round.paidFees[dispute.ruling] > 0
-                ? (contributionTo[dispute.ruling] * round.feeRewards) / round.paidFees[dispute.ruling]
+            uint256 paidFees = round.paidFees[ruling];
+            uint256 reward = paidFees > 0
+                ? (contributionTo[ruling] * round.feeRewards) / paidFees
                 : 0;
-            if (dispute.ruling == PARTY_A) rewardA = reward;
-            if (dispute.ruling == PARTY_B) rewardB = reward;
+            if (ruling == PARTY_A) rewardA = reward;
+            else if (ruling == PARTY_B) rewardB = reward;
         }
     }
 
@@ -375,7 +392,15 @@ library BinaryArbitrable {
         }
 
         appealCost = self.arbitrator.appealCost(dispute.disputeIDOnArbitratorSide, self.arbitratorExtraData);
-        totalCost = appealCost.addCap((appealCost.mulCap(multiplier)) / MULTIPLIER_DIVISOR);
+        totalCost = appealCost.addCap(appealCost.mulCap(multiplier) / MULTIPLIER_DIVISOR);
+    }
+
+    /** @dev Returns true if the dispute exists.
+     *  @param _localDisputeID The dispute ID as defined in the arbitrable contract.
+     *  @return bool.
+     */
+    function disputeExists(ArbitrableStorage storage self, uint256 _localDisputeID) internal view returns (bool) {
+        return self.disputes[_localDisputeID].roundCounter != 0;
     }
 
     /** @dev Gets the final ruling if the dispute is resolved.
@@ -384,8 +409,8 @@ library BinaryArbitrable {
      */
     function getFinalRuling(ArbitrableStorage storage self, uint256 _localDisputeID) internal view returns(uint256) {
         DisputeData storage dispute = self.disputes[_localDisputeID];
-        require(dispute.status == Status.Resolved, "Arbitrator has not ruled yet.");
-        return uint256(dispute.ruling);
+        require(dispute.ruling != 0, "Arbitrator has not ruled yet.");
+        return uint256(dispute.ruling - 1);
     }
 
     /** @dev Gets the cost of arbitration using the given arbitrator and arbitratorExtraData.
@@ -400,7 +425,7 @@ library BinaryArbitrable {
      *  @return The number of rounds.
      */
     function getNumberOfRounds(ArbitrableStorage storage self, uint256 _localDisputeID) internal view returns (uint256) {
-        return self.disputes[_localDisputeID].rounds.length;
+        return self.disputes[_localDisputeID].roundCounter;
     }
 
     /** @dev Gets the information on a round of a disputed dispute.
@@ -426,7 +451,7 @@ library BinaryArbitrable {
             round.paidFees,
             round.rulingFunded,
             round.feeRewards,
-            _round != dispute.rounds.length - 1
+            _round != dispute.roundCounter - 1
         );
     }
 

@@ -293,7 +293,7 @@ contract MockQuiz is IArbitrable, IEvidence, IAppealEvents {
     ) external view returns (uint256 total) {
         if (arbitrableStorage.disputes[_questionID].status != MultiOutcomeArbitrable.Status.Resolved) return total;
 
-        uint256 totalRounds = arbitrableStorage.disputes[_questionID].rounds.length;
+        uint256 totalRounds = arbitrableStorage.disputes[_questionID].roundCounter;
         for (uint256 roundI; roundI < totalRounds; roundI++)
             total += arbitrableStorage.getWithdrawableAmount(_questionID, _beneficiary, roundI, _answer);
     }

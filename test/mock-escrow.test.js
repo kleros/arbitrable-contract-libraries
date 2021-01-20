@@ -593,20 +593,6 @@ describe('MockEscrow contract', async () => {
         transactionId,
         transaction
       ] = await createTransactionHelper(amount)
-      await expect(
-        contract
-          .connect(crowdfunder1)
-          .fundAppeal(transactionId, transaction, TransactionParty.None, {
-            value: 100
-          })
-      ).to.be.revertedWith('No ongoing dispute to appeal.')
-      await expect(
-        contract
-          .connect(crowdfunder1)
-          .fundAppeal(transactionId, transaction, TransactionParty.Sender, {
-            value: 100
-          })
-      ).to.be.revertedWith('No ongoing dispute to appeal.')
 
       const [
         disputeID,
@@ -943,7 +929,7 @@ describe('MockEscrow contract', async () => {
             TransactionParty.Receiver,
             { value: loserAppealFee }
           )
-      ).to.be.revertedWith('Appeal fee has already been paid.')
+      ).to.be.revertedWith('Ruling is funded or is invalid.')
 
       // CROWDFUND THE SENDER SIDE
       // Partially fund the winner side
@@ -1521,7 +1507,7 @@ describe('MockEscrow contract', async () => {
           transactionId,
           ruleTransaction,
           0,
-          10
+          roundsLength
         )
       await tx3.wait()
 
@@ -1677,7 +1663,7 @@ describe('MockEscrow contract', async () => {
             .connect(caller)
             .submitEvidence(transactionId, transaction, evidence)
         ).to.be.revertedWith(
-          'Must not send evidence if the dispute is resolved.'
+          'The dispute is resolved.'
         )
       }
     else

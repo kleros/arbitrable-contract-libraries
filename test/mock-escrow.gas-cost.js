@@ -134,20 +134,18 @@ describe('MockEscrow contract', async () => {
       const [
         disputeID,
         _disputeTransactionId,
-        disputeTransaction
+        _disputeTransaction
       ] = await createDisputeHelper(transactionId, transaction)
 
-      await giveFinalRulingHelper(disputeID, DisputeRuling.Sender)
-
-      const txPromise = contract
-        .connect(other)
-        .executeRuling(transactionId, disputeTransaction)
-      const tx = await txPromise
-      const receipt = await tx.wait()
+      const [
+        _txPromise,
+        _tx,
+        receipt
+      ] = await giveFinalRulingHelper(disputeID, DisputeRuling.Sender)
 
       console.log('')
       console.log(
-        '\tGas used by executeRuling():  ' + parseInt(receipt.gasUsed)
+        '\tGas used when final ruling is given:  ' + parseInt(receipt.gasUsed)
       )
     })
 
@@ -163,17 +161,15 @@ describe('MockEscrow contract', async () => {
         disputeTransaction
       ] = await createDisputeHelper(transactionId, transaction)
 
-      await giveFinalRulingHelper(disputeID, DisputeRuling.RefusedToRule)
-
-      const txPromise = contract
-        .connect(other)
-        .executeRuling(transactionId, disputeTransaction)
-      const tx = await txPromise
-      const receipt = await tx.wait()
+      const [
+        _txPromise,
+        _tx,
+        receipt
+      ] = await giveFinalRulingHelper(disputeID, DisputeRuling.RefusedToRule)
 
       console.log('')
       console.log(
-        '\tGas used by executeRuling():  ' + parseInt(receipt.gasUsed)
+        '\tGas used when final ruling is given:  ' + parseInt(receipt.gasUsed)
       )
     })
 

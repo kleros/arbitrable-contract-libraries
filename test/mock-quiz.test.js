@@ -242,7 +242,7 @@ describe('MockQuiz contract', async () => {
         contract
           .connect(crowdfunder1)
           .fundAppeal(questionId, BigNumber.from(0), { value: 100 })
-      ).to.be.revertedWith('Invalid ruling.')
+      ).to.be.revertedWith('Ruling is funded or is invalid.')
       await expect(
         contract
           .connect(crowdfunder1)
@@ -462,7 +462,7 @@ describe('MockQuiz contract', async () => {
         contract
           .connect(crowdfunder2)
           .fundAppeal(questionId, wrongAnswer, { value: loserAppealFee })
-      ).to.be.revertedWith('Appeal fee has already been paid.')
+      ).to.be.revertedWith('Ruling is funded or is invalid.')
 
       // CROWDFUND THE HOST SIDE
       // Partially fund the winner side
@@ -982,7 +982,7 @@ describe('MockQuiz contract', async () => {
         .to.emit(contract, 'Evidence')
         .withArgs(arbitrator.address, questionID, callerAddress, evidence)
     } else {
-      await expect(txPromise).to.be.revertedWith('Must not send evidence if the dispute is resolved.')
+      await expect(txPromise).to.be.revertedWith('The dispute is resolved.')
     }
   }
 
