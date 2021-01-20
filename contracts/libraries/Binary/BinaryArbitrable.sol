@@ -179,8 +179,8 @@ library BinaryArbitrable {
         // Take up to the amount necessary to fund the current round at the current costs.
         (uint256 contribution, uint256 remainingETH) = calculateContribution(msg.value, totalCost.subCap(paidFee));
         round.contributions[msg.sender][_ruling] += contribution;
-        round.paidFees[_ruling] += contribution;
         paidFee += contribution;
+        round.paidFees[_ruling] = paidFee;
         emit AppealContribution(_localDisputeID, currentRound, _ruling, msg.sender, contribution);
 
         // Reimburse leftover ETH if any.
@@ -196,7 +196,7 @@ library BinaryArbitrable {
                 self.arbitrator.appeal{value: appealCost}(dispute.disputeIDOnArbitratorSide, self.arbitratorExtraData);
                 round.feeRewards = round.paidFees[PARTY_A] + round.paidFees[PARTY_B] - appealCost;
                 round.rulingFunded = 0; // clear storage
-                dispute.roundCounter++;
+                dispute.roundCounter = uint248(currentRound + 2); // currentRound starts at 0 while roundCounter at 1.
             }
         }
     }

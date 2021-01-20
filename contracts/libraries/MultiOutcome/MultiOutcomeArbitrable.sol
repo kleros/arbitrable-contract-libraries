@@ -173,8 +173,8 @@ library MultiOutcomeArbitrable {
         // Take up to the amount necessary to fund the current round at the current costs.
         (uint256 contribution, uint256 remainingETH) = calculateContribution(msg.value, totalCost.subCap(paidFee));
         round.contributions[msg.sender][_ruling] += contribution;
-        round.paidFees[_ruling] += contribution;
         paidFee += contribution;
+        round.paidFees[_ruling] = paidFee;
         round.totalFees += contribution; // Contributors to rulings that don't get fully funded can still win/lose rewards/contributions.
         emit AppealContribution(_localDisputeID, currentRound, _ruling, msg.sender, contribution);
 
@@ -191,7 +191,7 @@ library MultiOutcomeArbitrable {
                 self.arbitrator.appeal{value: appealCost}(dispute.disputeIDOnArbitratorSide, self.arbitratorExtraData);
                 round.appealCost = appealCost;
                 round.rulingFunded = 0; // clear storage
-                dispute.roundCounter++;
+                dispute.roundCounter = uint248(currentRound + 2); // currentRound starts at 0 while roundCounter at 1.
             }
         }
     }
