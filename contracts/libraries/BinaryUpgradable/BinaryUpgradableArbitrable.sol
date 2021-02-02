@@ -125,10 +125,12 @@ library BinaryUpgradableArbitrable {
         DisputeData storage dispute = self.disputes[_localDisputeID];
         require(dispute.roundCounter == 0, "Dispute already created.");
 
-        ArbitratorData storage arbitratorData = self.arbitratorDataList[self.arbitratorDataList.length - 1]; // Reverts if arbitrator data is not set.
+        uint256 arbitratorDataID = self.arbitratorDataList.length - 1;
+        ArbitratorData storage arbitratorData = self.arbitratorDataList[arbitratorDataID]; // Reverts if arbitrator data is not set.
         IArbitrator arbitrator = arbitratorData.arbitrator;
         disputeID = arbitrator.createDispute{value: _arbitrationCost}(AMOUNT_OF_CHOICES, arbitratorData.arbitratorExtraData);
 
+        dispute.arbitratorDataID = uint64(arbitratorDataID);
         dispute.disputeIDOnArbitratorSide = disputeID;
         dispute.roundCounter = 1;
 
@@ -152,8 +154,12 @@ library BinaryUpgradableArbitrable {
         require(dispute.ruling == 0, "The dispute is resolved.");
 
         if (bytes(_evidence).length > 0) {
-            IArbitrator arbitrator = self.arbitratorDataList[uint256(dispute.arbitratorDataID)].arbitrator;
-            emit Evidence(arbitrator, _evidenceGroupID, msg.sender, _evidence);
+            ArbitratorData storage arbitratorData;
+            if (dispute.roundCounter == 0) // The dispute does not exist.
+                arbitratorData = self.arbitratorDataList[self.arbitratorDataList.length - 1];
+            else
+                arbitratorData = self.arbitratorDataList[uint256(dispute.arbitratorDataID)];
+            emit Evidence(arbitratorData.arbitrator, _evidenceGroupID, msg.sender, _evidence);
         }
     }
 
