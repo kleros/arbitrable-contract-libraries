@@ -65,11 +65,7 @@ describe('MockEscrow contract with upgradable arbitrator', async () => {
     // Make appeals go to the same arbitrator
     await arbitrator.changeArbitrator(arbitrator.address)
 
-    const Arbitrator0 = await ethers.getContractFactory(
-      arbitratorArtifact.abi,
-      arbitratorArtifact.bytecode
-    )
-    arbitrator0 = await Arbitrator0.deploy(
+    arbitrator0 = await Arbitrator.deploy(
       String(arbitrationFee),
       ethers.constants.AddressZero,
       arbitratorExtraData,
