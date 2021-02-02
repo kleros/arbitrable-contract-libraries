@@ -3,7 +3,7 @@
 | Feature | Implementation |
 |:-|:-|
 | Arbitrator definition | Contract level |
-| Arbitrator upgradable | No |
+| Arbitrator upgradable | Yes |
 | Ruling | Binary |
 | Dispute creation funding | Defined by arbitrable contract |
 | Appeals allowed | Yes |

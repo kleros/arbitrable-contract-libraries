@@ -10,7 +10,7 @@ pragma solidity >=0.7;
 import "@kleros/erc-792/contracts/IArbitrator.sol";
 import "@kleros/ethereum-libraries/contracts/CappedMath.sol";
 
-library MultiOutcomeArbitrable {
+library MultiOutcomeUpgradableArbitrable {
     using CappedMath for uint256;
 
     /* *** Contract variables *** */
@@ -29,20 +29,25 @@ library MultiOutcomeArbitrable {
 
     struct DisputeData {
         mapping(uint256 => Round) rounds;
-        uint248 roundCounter;
+        uint184 roundCounter;
+        uint64 arbitratorDataID;
         Status status;
         uint256 ruling;
         uint256 disputeIDOnArbitratorSide;
     }
 
-    struct ArbitrableStorage {
-        IArbitrator arbitrator; // Address of the arbitrator contract. Should only be set once. TRUSTED.
-        bytes arbitratorExtraData; // Extra data to set up the arbitration.     
+    struct ArbitratorData {
+        IArbitrator arbitrator; // Address of the trusted arbitrator to solve disputes. TRUSTED.
+        bytes arbitratorExtraData; // Extra data for the arbitrator.
+    }
+
+    struct ArbitrableStorage {   
         uint256 sharedStakeMultiplier; // Multiplier for calculating the appeal fee that must be paid by the submitter in the case where there is no winner or loser (e.g. when the arbitrator ruled "refuse to arbitrate").
         uint256 winnerStakeMultiplier; // Multiplier for calculating the appeal fee of the party that won the previous round.
         uint256 loserStakeMultiplier; // Multiplier for calculating the appeal fee of the party that lost the previous round.
         mapping(uint256 => DisputeData) disputes; // disputes[localDisputeID]
         mapping(uint256 => uint256) externalIDtoLocalID; // Maps external (arbitrator's side) dispute ids to local dispute ids. The local dispute ids must be defined by the arbitrable contract. externalIDtoLocalID[disputeIDOnArbitratorSide]
+        ArbitratorData[] arbitratorDataList; // Stores the arbitrator data of the contract. Updated each time the data is changed.
     }
 
     /* *** Events *** */
@@ -95,12 +100,9 @@ library MultiOutcomeArbitrable {
         IArbitrator _arbitrator, 
         bytes memory _arbitratorExtraData
         ) internal {
-        require(
-            self.arbitrator == IArbitrator(0x0) && _arbitrator != IArbitrator(0x0), 
-            "Arbitrator is set or is invalid."
-        );
-        self.arbitrator = _arbitrator;
-        self.arbitratorExtraData = _arbitratorExtraData;
+        ArbitratorData storage arbitratorData = self.arbitratorDataList.push();
+        arbitratorData.arbitrator = _arbitrator;
+        arbitratorData.arbitratorExtraData = _arbitratorExtraData;
     }
 
     /** @dev Invokes the arbitrator to create a dispute. Requires _arbitrationCost ETH. It's the arbitrable contract responsability to make sure the amount of ETH available in the contract is enough.
@@ -120,15 +122,19 @@ library MultiOutcomeArbitrable {
         DisputeData storage dispute = self.disputes[_localDisputeID];
         require(dispute.status == Status.None, "Dispute already created.");
         
-        disputeID = self.arbitrator.createDispute{value: _arbitrationCost}(MAX_NO_OF_CHOICES, self.arbitratorExtraData);
+        uint256 arbitratorDataID = self.arbitratorDataList.length - 1;
+        ArbitratorData storage arbitratorData = self.arbitratorDataList[arbitratorDataID]; // Reverts if arbitrator data is not set.
+        IArbitrator arbitrator = arbitratorData.arbitrator;
+        disputeID = arbitrator.createDispute{value: _arbitrationCost}(MAX_NO_OF_CHOICES, arbitratorData.arbitratorExtraData);
         
+        dispute.arbitratorDataID = uint64(arbitratorDataID);
         dispute.disputeIDOnArbitratorSide = disputeID;
         dispute.status = Status.Disputed;
         dispute.roundCounter = 1;
         
         self.externalIDtoLocalID[disputeID] = _localDisputeID;
 
-        emit Dispute(self.arbitrator, disputeID, _metaEvidenceID, _evidenceGroupID);
+        emit Dispute(arbitrator, disputeID, _metaEvidenceID, _evidenceGroupID);
     }
 
     /** @dev Submits a reference to evidence. EVENT.
@@ -142,13 +148,17 @@ library MultiOutcomeArbitrable {
         uint256 _evidenceGroupID,
         string memory _evidence
     ) internal {
-        require(
-            self.disputes[_localDisputeID].status < Status.Resolved,
-            "The dispute is resolved."
-        );
+        DisputeData storage dispute = self.disputes[_localDisputeID];
+        require(dispute.status < Status.Resolved, "The dispute is resolved.");
 
-        if (bytes(_evidence).length > 0)
-            emit Evidence(self.arbitrator, _evidenceGroupID, msg.sender, _evidence);
+        if (bytes(_evidence).length > 0) {
+            ArbitratorData storage arbitratorData;
+            if (dispute.roundCounter == 0) // The dispute does not exist.
+                arbitratorData = self.arbitratorDataList[self.arbitratorDataList.length - 1];
+            else
+                arbitratorData = self.arbitratorDataList[uint256(dispute.arbitratorDataID)];
+            emit Evidence(arbitratorData.arbitrator, _evidenceGroupID, msg.sender, _evidence);
+        }
     }
 
     /** @dev Takes up to the total amount required to fund a side of an appeal. Reimburses the rest. Creates an appeal if two sides are fully funded.
@@ -188,10 +198,11 @@ library MultiOutcomeArbitrable {
                 round.rulingFunded = _ruling;
             } else {
                 // Two rulings are fully funded. Create an appeal.
-                self.arbitrator.appeal{value: appealCost}(dispute.disputeIDOnArbitratorSide, self.arbitratorExtraData);
+                ArbitratorData storage arbitratorData = self.arbitratorDataList[uint256(dispute.arbitratorDataID)];
+                arbitratorData.arbitrator.appeal{value: appealCost}(dispute.disputeIDOnArbitratorSide, arbitratorData.arbitratorExtraData);
                 round.appealCost = appealCost;
                 round.rulingFunded = 0; // clear storage
-                dispute.roundCounter = uint248(currentRound + 2); // currentRound starts at 0 while roundCounter at 1.
+                dispute.roundCounter = uint184(currentRound + 2); // currentRound starts at 0 while roundCounter at 1.
             }
         }
     }
@@ -208,7 +219,7 @@ library MultiOutcomeArbitrable {
     ) internal returns(uint256 finalRuling) {
         uint256 localDisputeID = self.externalIDtoLocalID[_disputeIDOnArbitratorSide];
         DisputeData storage dispute = self.disputes[localDisputeID];
-        IArbitrator arbitrator = self.arbitrator;
+        IArbitrator arbitrator = self.arbitratorDataList[uint256(dispute.arbitratorDataID)].arbitrator;
 
         require(
             dispute.status == Status.Disputed &&
@@ -359,7 +370,8 @@ library MultiOutcomeArbitrable {
         uint256 _ruling
     ) internal view returns (uint256 appealCost, uint256 totalCost) {
         DisputeData storage dispute = self.disputes[_localDisputeID];
-        IArbitrator arbitrator = self.arbitrator;
+        ArbitratorData storage arbitratorData = self.arbitratorDataList[uint256(dispute.arbitratorDataID)];
+        IArbitrator arbitrator = arbitratorData.arbitrator;
         uint256 disputeIDOnArbitratorSide = dispute.disputeIDOnArbitratorSide;
 
         (uint256 appealPeriodStart, uint256 appealPeriodEnd) = arbitrator.appealPeriod(disputeIDOnArbitratorSide);
@@ -376,7 +388,7 @@ library MultiOutcomeArbitrable {
             multiplier = self.loserStakeMultiplier;
         }
 
-        appealCost = arbitrator.appealCost(disputeIDOnArbitratorSide, self.arbitratorExtraData);
+        appealCost = arbitrator.appealCost(disputeIDOnArbitratorSide, arbitratorData.arbitratorExtraData);
         totalCost = appealCost.addCap(appealCost.mulCap(multiplier) / MULTIPLIER_DIVISOR);
     }
 
@@ -391,10 +403,19 @@ library MultiOutcomeArbitrable {
     }
 
     /** @dev Gets the cost of arbitration using the given arbitrator and arbitratorExtraData.
+     *  @param _localDisputeID The dispute ID as defined in the arbitrable contract. If the disputeID does not exist, the arbitration cost is calculate with to most up-to-date arbitrator.
      *  @return Arbitration cost.
      */
-    function getArbitrationCost(ArbitrableStorage storage self) internal view returns(uint256) {
-        return self.arbitrator.arbitrationCost(self.arbitratorExtraData);
+    function getArbitrationCost(ArbitrableStorage storage self, uint256 _localDisputeID) internal view returns(uint256) {
+        DisputeData storage dispute = self.disputes[_localDisputeID];
+        ArbitratorData storage arbitratorData;
+        if (dispute.roundCounter == 0) // The dispute does not exist.
+            arbitratorData = self.arbitratorDataList[self.arbitratorDataList.length - 1];
+        else
+            arbitratorData = self.arbitratorDataList[uint256(dispute.arbitratorDataID)];
+
+        return arbitratorData.arbitrator.arbitrationCost(arbitratorData.arbitratorExtraData);
+
     }
 
     /** @dev Gets the number of rounds of the specific dispute.

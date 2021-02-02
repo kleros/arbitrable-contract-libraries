@@ -27,21 +27,23 @@ Here you are going to find solidity libraries that help you create arbitrable co
 If you haven't already, we recommend you to go through the [ERC-792 Arbitration Standard docs](https://developer.kleros.io/en/latest/index.html). Even though libraries in this repo abstract most of the arbitration related interactions, you will need to know some of the features and the vocabulary introduced by the standard to properly understand what is going on.
 
 There is not a single way to implement arbitrable contracts. For this reason, we provide opinionated libraries that suit different use cases. At the moment you can find:
-- [BinaryArbitrable](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/libraries/Binary) for disputes in which there are only two parties involved (or two possible rulings).
-- [MultiOutcome](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/libraries/MultiOutcome) for disputes in which support for more complex ruling options is needed.
+- [BinaryArbitrable](https://github.com/kleros/arbitrable-contract-libraries/blob/main/contracts/libraries/Binary/BinaryArbitrable.sol) for disputes in which there are only two parties involved (or two possible rulings).
+- [BinaryUpgradableArbitrable](https://github.com/kleros/arbitrable-contract-libraries/blob/main/contracts/libraries/BinaryUpgradable/BinaryUpgradableArbitrable.sol) Same as BinaryArbitrable, but with upgradable arbitrator.
+- [MultiOutcomeArbitrable](https://github.com/kleros/arbitrable-contract-libraries/blob/main/contracts/libraries/MultiOutcome/MultiOutcomeArbitrable.sol) for disputes in which support for more complex ruling options is needed.
+- [MultiOutcomeUpgradableArbitrable](https://github.com/kleros/arbitrable-contract-libraries/blob/main/contracts/libraries/MultiOutcomeUpgradable/MultiOutcomeUpgradableArbitrable.sol) Same as MultiOutcomeArbitrable, but with upgradable arbitrator.
 
 # Implementing an appealable arbitrable contract
 
 > :warning: **WARNING:** Smart contracts in this tutorial are not intended for production but educational purposes. Beware of using them on the main network.
 
-Let's rewrite this [Escrow](https://developer.kleros.io/en/latest/implementing-an-arbitrable.html) contract using the [BinaryArbitrable](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/libraries/Binary/BinaryArbitrable.sol) library. We are going to see how to easily:
+Let's rewrite this [Escrow](https://developer.kleros.io/en/latest/implementing-an-arbitrable.html) contract using the [BinaryArbitrable](https://github.com/kleros/arbitrable-contract-libraries/blob/main/contracts/libraries/Binary/BinaryArbitrable.sol) library. We are going to see how to easily:
 - handle the entire arbitration cycle.
 - let users submit evidence.
 - add support for appeals which can be crowdfunded.
 - let appeal funders withdraw their rewards if they funded the winning ruling.
 - add getters to keep track of the appeal status of disputes.
 
-You can find the finished sample contract [here](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/libraries/Binary/SimpleEscrow.sol).
+You can find the finished sample contract [here](https://github.com/kleros/arbitrable-contract-libraries/blob/main/contracts/libraries/Binary/SimpleEscrow.sol).
 
 ### Arbitration cycle
 
@@ -202,7 +204,7 @@ What you have to be aware of:
 - If only one ruling is fully funded, then the appeal is not created and that ruling is considered the winner.
 - There can be as many appeal rounds as the arbitrator allows.
 - You don't have too worry about sanity checks or sending overpaid fees back. The library takes care of this.
-- `AppealContribution` and `HasPaidAppealFee` events are emitted. Check them out in `fundAppeal()` and in [IAppealEvents](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/interfaces/IAppealEvents.sol).
+- `AppealContribution` and `HasPaidAppealFee` events are emitted. Check them out in `fundAppeal()` and in [IAppealEvents](https://github.com/kleros/arbitrable-contract-libraries/blob/main/contracts/interfaces/IAppealEvents.sol).
 - The arbitrator is only going to invoke `rule()` once the ruling is decisive, which means that all appeals are solved and it is not possible to continue appealing.
 - Funding appeals is profitable to winning parties and crowdfunders.
 
@@ -226,7 +228,7 @@ Withdrawals are performed per crowdfunder and is their responsibility to claim t
     }
 ```
 
-As stated in [BinaryArbitrable](https://github.com/kleros/appeal-utils/blob/main/contracts/0.7.x/libraries/Binary/BinaryArbitrable.sol):
+As stated in [BinaryArbitrable](https://github.com/kleros/arbitrable-contract-libraries/blob/main/contracts/libraries/Binary/BinaryArbitrable.sol):
 
 ```solidity
  /**
