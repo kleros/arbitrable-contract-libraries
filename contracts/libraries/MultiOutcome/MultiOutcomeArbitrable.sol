@@ -208,10 +208,11 @@ library MultiOutcomeArbitrable {
     ) internal returns(uint256 finalRuling) {
         uint256 localDisputeID = self.externalIDtoLocalID[_disputeIDOnArbitratorSide];
         DisputeData storage dispute = self.disputes[localDisputeID];
+        IArbitrator arbitrator = self.arbitrator;
 
         require(
             dispute.status == Status.Disputed &&
-            msg.sender == address(self.arbitrator), 
+            msg.sender == address(arbitrator), 
             "Ruling can't be processed."
         );
 
@@ -226,7 +227,7 @@ library MultiOutcomeArbitrable {
         dispute.status = Status.Resolved;
         dispute.ruling = finalRuling;
 
-        emit Ruling(self.arbitrator, _disputeIDOnArbitratorSide, finalRuling);
+        emit Ruling(arbitrator, _disputeIDOnArbitratorSide, finalRuling);
     }
 
     /** @dev Withdraws contributions of appeal rounds. Reimburses contributions if the appeal was not fully funded. 
@@ -358,12 +359,14 @@ library MultiOutcomeArbitrable {
         uint256 _ruling
     ) internal view returns (uint256 appealCost, uint256 totalCost) {
         DisputeData storage dispute = self.disputes[_localDisputeID];
+        IArbitrator arbitrator = self.arbitrator;
+        uint256 disputeIDOnArbitratorSide = dispute.disputeIDOnArbitratorSide;
 
-        (uint256 appealPeriodStart, uint256 appealPeriodEnd) = self.arbitrator.appealPeriod(dispute.disputeIDOnArbitratorSide);
+        (uint256 appealPeriodStart, uint256 appealPeriodEnd) = arbitrator.appealPeriod(disputeIDOnArbitratorSide);
         require(block.timestamp >= appealPeriodStart && block.timestamp < appealPeriodEnd, "Not in appeal period.");
 
         uint256 multiplier;
-        uint256 winner = self.arbitrator.currentRuling(dispute.disputeIDOnArbitratorSide);
+        uint256 winner = arbitrator.currentRuling(disputeIDOnArbitratorSide);
         if (winner == _ruling){
             multiplier = self.winnerStakeMultiplier;
         } else if (winner == 0){
@@ -373,7 +376,7 @@ library MultiOutcomeArbitrable {
             multiplier = self.loserStakeMultiplier;
         }
 
-        appealCost = self.arbitrator.appealCost(dispute.disputeIDOnArbitratorSide, self.arbitratorExtraData);
+        appealCost = arbitrator.appealCost(disputeIDOnArbitratorSide, self.arbitratorExtraData);
         totalCost = appealCost.addCap(appealCost.mulCap(multiplier) / MULTIPLIER_DIVISOR);
     }
 

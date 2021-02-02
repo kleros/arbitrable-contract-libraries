@@ -213,10 +213,11 @@ library BinaryArbitrable {
     ) internal returns(uint256 finalRuling) {
         uint256 localDisputeID = self.externalIDtoLocalID[_disputeIDOnArbitratorSide];
         DisputeData storage dispute = self.disputes[localDisputeID];
+        IArbitrator arbitrator = self.arbitrator;
 
         require(
             dispute.ruling == 0 &&
-            msg.sender == address(self.arbitrator) &&
+            msg.sender == address(arbitrator) &&
             _ruling <= AMOUNT_OF_CHOICES, 
             "Ruling can't be processed."
         );
@@ -231,7 +232,7 @@ library BinaryArbitrable {
 
         dispute.ruling = uint8(finalRuling + 1);
 
-        emit Ruling(self.arbitrator, _disputeIDOnArbitratorSide, finalRuling);
+        emit Ruling(arbitrator, _disputeIDOnArbitratorSide, finalRuling);
     }
 
     /** @dev Withdraws contributions of appeal rounds. Reimburses contributions if the appeal was not fully funded. 
@@ -376,12 +377,14 @@ library BinaryArbitrable {
         uint256 _ruling
     ) internal view returns (uint256 appealCost, uint256 totalCost) {
         DisputeData storage dispute = self.disputes[_localDisputeID];
+        IArbitrator arbitrator = self.arbitrator;
+        uint256 disputeIDOnArbitratorSide = dispute.disputeIDOnArbitratorSide;
 
-        (uint256 appealPeriodStart, uint256 appealPeriodEnd) = self.arbitrator.appealPeriod(dispute.disputeIDOnArbitratorSide);
+        (uint256 appealPeriodStart, uint256 appealPeriodEnd) = arbitrator.appealPeriod(disputeIDOnArbitratorSide);
         require(block.timestamp >= appealPeriodStart && block.timestamp < appealPeriodEnd, "Not in appeal period.");
 
         uint256 multiplier;
-        uint256 winner = self.arbitrator.currentRuling(dispute.disputeIDOnArbitratorSide);
+        uint256 winner = arbitrator.currentRuling(disputeIDOnArbitratorSide);
         if (winner == _ruling){
             multiplier = self.winnerStakeMultiplier;
         } else if (winner == 0){
@@ -391,7 +394,7 @@ library BinaryArbitrable {
             multiplier = self.loserStakeMultiplier;
         }
 
-        appealCost = self.arbitrator.appealCost(dispute.disputeIDOnArbitratorSide, self.arbitratorExtraData);
+        appealCost = arbitrator.appealCost(disputeIDOnArbitratorSide, self.arbitratorExtraData);
         totalCost = appealCost.addCap(appealCost.mulCap(multiplier) / MULTIPLIER_DIVISOR);
     }
 
@@ -409,8 +412,9 @@ library BinaryArbitrable {
      */
     function getFinalRuling(ArbitrableStorage storage self, uint256 _localDisputeID) internal view returns(uint256) {
         DisputeData storage dispute = self.disputes[_localDisputeID];
-        require(dispute.ruling != 0, "Arbitrator has not ruled yet.");
-        return uint256(dispute.ruling - 1);
+        uint256 ruling = dispute.ruling;
+        require(ruling != 0, "Arbitrator has not ruled yet.");
+        return ruling - 1;
     }
 
     /** @dev Gets the cost of arbitration using the given arbitrator and arbitratorExtraData.
