@@ -60,13 +60,13 @@ library BinaryArbitrable {
     /// @dev See {@kleros/erc-792/contracts/erc-1497/IEvidence.sol}.
     event Dispute(IArbitrator indexed _arbitrator, uint256 indexed _disputeIDOnArbitratorSide, uint256 _metaEvidenceID, uint256 _evidenceGroupID);
 
-    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}.
+    /// @dev See {https://github.com/kleros/arbitrable-contract-libraries/blob/main/contracts/interfaces/IAppealEvents.sol}.
     event HasPaidAppealFee(uint256 indexed _localDisputeID, uint256 _round, uint256 indexed _ruling);
 
-    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}.
+    /// @dev See {https://github.com/kleros/arbitrable-contract-libraries/blob/main/contracts/interfaces/IAppealEvents.sol}.
     event AppealContribution(uint256 indexed _localDisputeID, uint256 _round, uint256 indexed _ruling, address indexed _contributor, uint256 _amount);
 
-    /// @dev See {@kleros/appeal-utils/contracts/0.7.x/interfaces/IAppealEvents.sol}.
+    /// @dev See {https://github.com/kleros/arbitrable-contract-libraries/blob/main/contracts/interfaces/IAppealEvents.sol}.
     event Withdrawal(uint256 indexed _localDisputeID, uint256 indexed _round, uint256 _ruling, address indexed _contributor, uint256 _reward);
 
     // **************************** //
