@@ -205,7 +205,7 @@ library BinaryUpgradableArbitrable {
                 // Both rulings are fully funded. Create an appeal.
                 ArbitratorData storage arbitratorData = self.arbitratorDataList[uint256(dispute.arbitratorDataID)];
                 arbitratorData.arbitrator.appeal{value: appealCost}(dispute.disputeIDOnArbitratorSide, arbitratorData.arbitratorExtraData);
-                round.feeRewards = round.paidFees[PARTY_A] + round.paidFees[PARTY_B] - appealCost;
+                round.feeRewards = paidFee + round.paidFees[rulingFunded] - appealCost;
                 round.rulingFunded = 0; // clear storage
                 dispute.roundCounter = uint184(currentRound + 2); // currentRound starts at 0 while roundCounter at 1.
             }
