@@ -161,14 +161,22 @@ Lastly, we need to update `rule()` in order to let the arbitrator enforce a ruli
     function rule(uint256 _disputeID, uint256 _ruling) public override {
         RulingOptions _finalRuling = RulingOptions(arbitrableStorage.processRuling(_disputeID, _ruling));
 
-        if (_finalRuling == RulingOptions.PayerWins) payer.send(address(this).balance);
-        else if (_finalRuling == RulingOptions.PayeeWins) payee.send(address(this).balance);
+        if (_finalRuling == RulingOptions.PayerWins) {
+            payer.send(address(this).balance);
+        } else if (_finalRuling == RulingOptions.PayeeWins) {
+            payee.send(address(this).balance);
+        } else {
+            // RulingOptions.RefusedToArbitrate.
+            uint256 splitBalance = address(this).balance / 2;
+            payee.send(splitBalance);
+            payer.send(splitBalance);
+        }
 
         status = Status.Resolved;
     }
 ```
 
-All the important sanity checks and the emission of the `Ruling` event are done inside `processRuling()`. Beware that `_ruling` and `_finalRuling` can differ if appeals were funded.
+All the important sanity checks and the emission of the `Ruling` event are done inside `processRuling()`. Beware that `_ruling` and `_finalRuling` can differ if appeals were funded. Remember that the arbitrator can refuse to rule, which means that _finalRuling would be 0. In such case, it depends on the contract's use case and logic what should be done. Here we decided to split the funds evenly between payee and payer. We could as well have penalized both of them by sending the funds to a third party or by burning the ETH.
 
 ### Evidence
 

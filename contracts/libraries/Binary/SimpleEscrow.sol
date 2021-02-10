@@ -109,8 +109,16 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
     function rule(uint256 _disputeID, uint256 _ruling) public override {
         RulingOptions _finalRuling = RulingOptions(arbitrableStorage.processRuling(_disputeID, _ruling));
 
-        if (_finalRuling == RulingOptions.PayerWins) payer.send(address(this).balance);
-        else if (_finalRuling == RulingOptions.PayeeWins) payee.send(address(this).balance);
+        if (_finalRuling == RulingOptions.PayerWins) {
+            payer.send(address(this).balance);
+        } else if (_finalRuling == RulingOptions.PayeeWins) {
+            payee.send(address(this).balance);
+        } else {
+            // RulingOptions.RefusedToArbitrate.
+            uint256 splitBalance = address(this).balance / 2;
+            payee.send(splitBalance);
+            payer.send(splitBalance);
+        }
 
         status = Status.Resolved;
     }
