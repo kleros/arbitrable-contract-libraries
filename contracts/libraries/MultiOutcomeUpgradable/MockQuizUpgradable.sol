@@ -176,7 +176,7 @@ contract MockQuizUpgradable is IArbitrable, IEvidence, IAppealEvents {
         require(block.timestamp - question.lastInteraction > challengeTimeout, "The challenge phase hasn't passed yet.");
         
         question.status = Status.Resolved;
-        question.host.send(question.prize + question.sumDeposit);
+        question.guest.send(question.prize + question.sumDeposit);
 
         emit QuestionResolved(_questionID, question.guestAnswer);
     }
