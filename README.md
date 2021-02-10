@@ -144,10 +144,9 @@ We are ready to create disputes now. If the `payer` reclaimed the funds, by send
 ```solidity
     function depositArbitrationFeeForPayee() public payable {
         require(status == Status.Reclaimed, "Transaction is not in Reclaimed state.");
-        uint256 arbitrationCost = arbitrableStorage.getArbitrationCost();
         arbitrableStorage.createDispute(
             TX_ID,
-            arbitrationCost,
+            msg.value,
             META_EVIDENCE_ID,
             TX_ID
         );

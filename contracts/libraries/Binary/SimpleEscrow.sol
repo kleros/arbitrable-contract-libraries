@@ -89,10 +89,9 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
 
     function depositArbitrationFeeForPayee() public payable {
         require(status == Status.Reclaimed, "Transaction is not in Reclaimed state.");
-        uint256 arbitrationCost = arbitrableStorage.getArbitrationCost();
         arbitrableStorage.createDispute(
             TX_ID,
-            arbitrationCost,
+            msg.value,
             META_EVIDENCE_ID,
             TX_ID
         );
@@ -124,7 +123,11 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
         arbitrableStorage.batchWithdrawFeesAndRewards(TX_ID, _beneficiary, _cursor, _count);
     }
 
-    function remainingTimeToReclaim() public view returns (uint256) {
+    // **************************** //
+    // *         getters          * //
+    // **************************** //
+
+    function remainingTimeToReclaim() external view returns (uint256) {
         require(status == Status.Initial, "Transaction is not in Initial state.");
         return
             (block.timestamp - createdAt) > RECLAMATION_PERIOD
@@ -132,7 +135,7 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
                 : (createdAt + RECLAMATION_PERIOD - block.timestamp);
     }
 
-    function remainingTimeToDepositArbitrationFee() public view returns (uint256) {
+    function remainingTimeToDepositArbitrationFee() external view returns (uint256) {
         require(status == Status.Reclaimed, "Transaction is not in Reclaimed state.");
         require(!arbitrableStorage.disputeExists(TX_ID), "Dispute has already been created.");
 
@@ -141,10 +144,6 @@ contract SimpleEscrow is IArbitrable, IEvidence, IAppealEvents {
                 ? 0
                 : (reclaimedAt + ARBITRATION_FEE_DEPOSIT_PERIOD - block.timestamp);
     }
-
-    // **************************** //
-    // *         getters          * //
-    // **************************** //
 
     function getRoundInfo(uint256 _round) external view returns (
             uint256[3] memory paidFees,
