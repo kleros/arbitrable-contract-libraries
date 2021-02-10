@@ -192,7 +192,9 @@ contract MockQuiz is IArbitrable, IEvidence, IAppealEvents {
 
         uint256 arbitrationCost = arbitrableStorage.getArbitrationCost();
         require(msg.value >= arbitrationCost, "Not enough ETH to cover challenge deposit.");
-
+        uint256 remainder = msg.value - arbitrationCost;
+        msg.sender.send(remainder);
+    
         question.status = Status.Challenged;
         question.hostAnswer = _answer;
 
@@ -223,7 +225,7 @@ contract MockQuiz is IArbitrable, IEvidence, IAppealEvents {
         uint256 _questionID,
         uint256 _round,
         uint256 _answer
-    ) public {
+    ) external {
         arbitrableStorage.withdrawFeesAndRewards(_questionID, _beneficiary, _round, _answer);
     }
 
@@ -240,7 +242,7 @@ contract MockQuiz is IArbitrable, IEvidence, IAppealEvents {
         uint256 _cursor,
         uint256 _count,
         uint256 _answer
-    ) public {
+    ) external {
         arbitrableStorage.batchWithdrawFeesAndRewards(_questionID, _beneficiary, _cursor, _count, _answer);
     }
 
