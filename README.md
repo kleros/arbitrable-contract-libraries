@@ -110,7 +110,7 @@ From now on, every time we interact with the arbitrator, we will do so through `
     }
 ```
 
-First, we set the arbitrator data: its address and the extra data if needed. Beware that this library is designed taking into account that the arbitrator **won't** change. If you need such flexibility, either deploy new contracts for each arbitrator or consider modifying the library to safely handle changes in arbitrator's data.
+First, we set the arbitrator data: its address and the extra data if needed. Beware that this library is designed taking into account that the arbitrator **won't** change. If you need such flexibility, either deploy new contracts for each arbitrator or use the BinaryUpgradableArbitrable library, which efficiently handles arbitrator updates.
 
 Second, we set the multipliers. The multipliers are only used during appeals. If you set them to values higher than zero, the cost of appealing is going to be adjusted depending on whether you are funding the loser's or the winner's ruling. More on that later.
 
@@ -288,7 +288,7 @@ And that’s it! We turned a very simple arbitrable escrow into a contract with 
 
 # Contribute
 
-Check out the [kleros gitbook](https://klerosio.gitbook.io/contributing-md/code-style-and-guidelines/solidity).
+Check out the [kleros gitbook](https://klerosio.gitbook.io/contributing-md/code-style-and-guidelines/solidity). If the current libraries don't fit your needs, consider adding an issue to request new features and libraries. At Kleros we are constantly looking forward to improving the documentation and tools available.
 
 ## Test
 
