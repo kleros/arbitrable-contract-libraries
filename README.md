@@ -13,6 +13,10 @@
     <a href="https://kleros.slack.com/archives/C65N18PT3">
       Slack
     </a>
+    <span> | </span>
+    <a href="https://discord.gg/cAvWk8B23f">
+      Discord
+    </a>
   </h4>
 </div>
 
